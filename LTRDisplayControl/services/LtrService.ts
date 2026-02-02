@@ -1,4 +1,5 @@
 import { IInputs } from "../generated/ManifestTypes";
+import { diag } from "../utils/Diagnostics";
 
 export interface IEntityMetadata {
     LogicalName: string;
@@ -27,6 +28,7 @@ export class LtrService {
     constructor(context: ComponentFramework.Context<IInputs>, targetEntity: string) {
         this._context = context;
         this._targetEntity = targetEntity;
+        diag.info(`LtrService initialized for entity '${targetEntity}'`);
     }
 
     /**
@@ -34,6 +36,7 @@ export class LtrService {
      */
     public async getSystemViews(): Promise<IViewDefinition[]> {
         try {
+            diag.info("Fetching system views", { entity: this._targetEntity });
             const query = `?` +
                 `$select=name,fetchxml,layoutxml,savedqueryid` +
                 `&$filter=returnedtypecode eq '${this._targetEntity}' and statecode eq 0`; // active views
@@ -41,14 +44,16 @@ export class LtrService {
             // Using standard WebAPI
             const result = await this._context.webAPI.retrieveMultipleRecords("savedquery", query);
 
-            return result.entities.map(e => ({
+            const views = result.entities.map(e => ({
                 id: e.savedqueryid,
                 name: e.name,
                 fetchXml: e.fetchxml,
                 layoutXml: e.layoutxml
             }));
+            diag.info("Fetched system views", { count: views.length });
+            return views;
         } catch (error) {
-            console.error("Error fetching views", error);
+            diag.error("Error fetching views", error, { entity: this._targetEntity });
             // Fallback or empty
             return [];
         }
@@ -59,6 +64,7 @@ export class LtrService {
      */
     public async getSystemForms(): Promise<IFormDefinition[]> {
         try {
+            diag.info("Fetching system forms", { entity: this._targetEntity });
             // Type 2 is 'Main' form usually, but we might want all read-only capability
             const query = `?` +
                 `$select=name,formxml,formid,type` +
@@ -66,13 +72,15 @@ export class LtrService {
 
             const result = await this._context.webAPI.retrieveMultipleRecords("systemform", query);
 
-            return result.entities.map(e => ({
+            const forms = result.entities.map(e => ({
                 id: e.formid,
                 name: e.name,
                 formXml: e.formxml
             }));
+            diag.info("Fetched system forms", { count: forms.length });
+            return forms;
         } catch (error) {
-            console.error("Error fetching forms", error);
+            diag.error("Error fetching forms", error, { entity: this._targetEntity });
             return [];
         }
     }
@@ -85,6 +93,7 @@ export class LtrService {
      */
     public async getLtrData(fetchXml: string, isArchive: boolean): Promise<any[]> {
         try {
+            diag.info("Fetching LTR data", { entity: this._targetEntity, isArchive });
             // NOTE: If specific API is needed for LTR, replace this logic.
             // Some LTR implementations use a custom message or specific headers.
             // Assuming the fetchXml provided by the View is sufficient or needs modification.
@@ -97,9 +106,10 @@ export class LtrService {
 
             // For standard FetchXML usage:
             const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
+            diag.info("Fetched LTR data", { count: result.entities.length, isArchive });
             return result.entities;
         } catch (error) {
-            console.error("Error fetching LTR data", error);
+            diag.error("Error fetching LTR data", error, { entity: this._targetEntity, isArchive });
             return [];
         }
     }
@@ -126,14 +136,17 @@ export class LtrService {
                 //  For safety, we'll just call retrieveMultipleRecords directly here to be explicit).
 
                 const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
-                return result.entities.length > 0 ? result.entities[0] : null;
+                const record = result.entities.length > 0 ? result.entities[0] : null;
+                diag.info("Fetched retained record", { entity: this._targetEntity, id, found: !!record });
+                return record;
             }
 
             // Standard retrieve for active data
             const result = await this._context.webAPI.retrieveRecord(this._targetEntity, id);
+            diag.info("Fetched active record", { entity: this._targetEntity, id, found: !!result });
             return result;
         } catch (error) {
-            console.error("Error fetching record details", error);
+            diag.error("Error fetching record details", error, { entity: this._targetEntity, id, isArchive });
             return null;
         }
     }

@@ -6,6 +6,7 @@ import { DynamicGrid } from './DynamicGrid';
 import { DynamicForm } from './DynamicForm';
 import { Dropdown, IDropdownOption } from '@fluentui/react/lib/Dropdown';
 import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
+import { diag } from '../utils/Diagnostics';
 
 interface IAppProps {
     context: ComponentFramework.Context<IInputs>;
@@ -41,17 +42,23 @@ const App: React.FC<IAppProps> = (props) => {
     React.useEffect(() => {
         const loadMetadata = async () => {
             setLoading(true);
-            const vs = await ltrService.getSystemViews();
-            const fs = await ltrService.getSystemForms();
+            try {
+                diag.info("Loading metadata");
+                const vs = await ltrService.getSystemViews();
+                const fs = await ltrService.getSystemForms();
 
-            setViews(vs);
-            setDetailsForms(fs);
+                setViews(vs);
+                setDetailsForms(fs);
+                diag.info("Metadata loaded", { views: vs.length, forms: fs.length });
 
-            // Default selections
-            if (vs.length > 0) handleViewChange(vs[0].id, vs);
-            if (fs.length > 0) setSelectedFormId(fs[0].id);
-
-            setLoading(false);
+                // Default selections
+                if (vs.length > 0) handleViewChange(vs[0].id, vs);
+                if (fs.length > 0) setSelectedFormId(fs[0].id);
+            } catch (err) {
+                diag.error("Metadata load failed", err);
+            } finally {
+                setLoading(false);
+            }
         };
         loadMetadata();
     }, [targetEntity]);
@@ -59,49 +66,72 @@ const App: React.FC<IAppProps> = (props) => {
     // Handlers
     const handleViewChange = async (viewId: string, currentViews = views) => {
         setLoading(true);
-        setSelectedViewId(viewId);
-        const view = currentViews.find(v => v.id === viewId);
-        if (view) {
+        try {
+            setSelectedViewId(viewId);
+            const view = currentViews.find(v => v.id === viewId);
+            if (!view) {
+                diag.error("Selected view not found", null, { viewId });
+                return;
+            }
+
+            diag.info("View selected", { viewId, viewName: view.name, isArchive });
+
             // 1. Parse Layout
             const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
             setGridColumns(columns);
+            diag.info("Parsed layout columns", { count: columns.length });
 
             // 2. Fetch Data
             const data = await ltrService.getLtrData(view.fetchXml, isArchive);
             setGridData(data);
+            diag.info("Grid data loaded", { count: data.length });
+        } catch (err) {
+            diag.error("View change failed", err, { viewId, isArchive });
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleFormChange = async (formId: string) => {
-        setSelectedFormId(formId);
-        // Pre-parse the form XML so it's ready when we click a record
-        const form = detailsForms.find(f => f.id === formId);
-        if (form) {
+        try {
+            setSelectedFormId(formId);
+            const form = detailsForms.find(f => f.id === formId);
+            if (!form) {
+                diag.error("Selected form not found", null, { formId });
+                return;
+            }
             const parsedForm = XmlParserHelper.parseFormXml(form.formXml);
             setDefinitions(parsedForm);
+            diag.info("Form parsed", { formId, sections: parsedForm.length });
+        } catch (err) {
+            diag.error("Form change failed", err, { formId });
         }
     };
 
     const handleRecordSelect = async (id: string) => {
-        // We might already have the data in gridData, but let's assume we want fresh specific details 
-        // OR just pass the row data if it's simpler. 
-        // For LTR, API might be precious, let's try to find it in memory first or fetch single.
+        try {
+            diag.info("Record selected", { id });
+            let record = gridData.find(r => r[targetEntity + 'id'] === id || r.id === id); // naive check
 
-        let record = gridData.find(r => r[targetEntity + 'id'] === id || r.id === id); // naive check
+            if (!record) {
+                record = await ltrService.getRecordDetails(id, isArchive);
+            }
 
-        if (!record) {
-            // Fetch if not in grid (pagination not implemented yet)
-            record = await ltrService.getRecordDetails(id, isArchive);
+            if (!record) {
+                diag.error("Record not found", null, { id, isArchive });
+                return;
+            }
+
+            // Ensure form definition is parsed
+            if (!definitions.length && selectedFormId) {
+                await handleFormChange(selectedFormId);
+            }
+
+            setSelectedRecord(record);
+            setViewMode('FORM');
+        } catch (err) {
+            diag.error("Record select failed", err, { id, isArchive });
         }
-
-        // Ensure form definition is parsed
-        if (!definitions.length && selectedFormId) {
-            handleFormChange(selectedFormId);
-        }
-
-        setSelectedRecord(record);
-        setViewMode('FORM');
     };
 
     return (

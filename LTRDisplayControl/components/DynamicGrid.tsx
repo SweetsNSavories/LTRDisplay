@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { DetailsList, IColumn, SelectionMode, Selection, DetailsListLayoutMode } from '@fluentui/react/lib/DetailsList';
 import { IGridColumn } from '../utils/XmlParser';
+import { diag } from '../utils/Diagnostics';
 
 interface IDynamicGridProps {
     columns: IGridColumn[];
@@ -24,7 +25,12 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
                 // effectively we pass the whole object back or just the ID if we can guess it.
                 // Let's pass the whole item and let App handle extraction or guess the ID.
                 const possibleId = item.id || item.incidentid; // Fallback for specific case, will refine
-                if (possibleId) onRecordSelect(possibleId);
+                if (possibleId) {
+                    diag.info("Grid row selected", { possibleId });
+                    onRecordSelect(possibleId);
+                } else {
+                    diag.error("Grid selection missing id", null, { itemSample: Object.keys(item) });
+                }
             }
         }
     });
