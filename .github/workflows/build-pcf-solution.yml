@@ -35,16 +35,9 @@ jobs:
       - name: Install Power Platform CLI
         shell: pwsh
         run: |
-          winget install --id Microsoft.PowerAppsCLI -e --accept-source-agreements --accept-package-agreements
-          $pacExe = Get-Command pac -ErrorAction SilentlyContinue
-          if (-not $pacExe) {
-            $pacExe = Get-ChildItem -Path "C:\\Program Files*" -Filter pac.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          }
-          if (-not $pacExe) {
-            Write-Error "pac.exe not found after install"
-          }
-          # Add containing folder to PATH for subsequent steps
-          Add-Content -Path $env:GITHUB_PATH -Value ($pacExe.Path | Split-Path)
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+          $toolPath = "$env:USERPROFILE/.dotnet/tools"
+          Add-Content -Path $env:GITHUB_PATH -Value $toolPath
           pac --version
 
       - name: Install npm dependencies
