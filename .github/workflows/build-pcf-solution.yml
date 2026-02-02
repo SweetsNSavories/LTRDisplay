@@ -32,16 +32,8 @@ jobs:
       - name: Configure NuGet feeds
         shell: pwsh
         run: |
-          $xml = @'
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
-    <add key="PowerAppsTools" value="https://pkgs.dev.azure.com/dynamicscrm/PowerAppsTools/_packaging/PowerAppsTools/nuget/v3/index.json" />
-  </packageSources>
-</configuration>
-'@
-          $xml | Set-Content NuGet.config
+          $xml = "<configuration>`n  <packageSources>`n    <add key=\"nuget.org\" value=\"https://api.nuget.org/v3/index.json\" />`n    <add key=\"PowerAppsTools\" value=\"https://pkgs.dev.azure.com/dynamicscrm/PowerAppsTools/_packaging/PowerAppsTools/nuget/v3/index.json\" />`n  </packageSources>`n</configuration>"
+          Set-Content NuGet.config -Value $xml
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
