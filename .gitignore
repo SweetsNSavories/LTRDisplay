@@ -2,8 +2,11 @@ node_modules/
 out/
 obj/
 bin/
-Solution/
+# Track the generated solution artifacts
+!solution/
+!solution/**
 pac-installer.pkg
 *.zip
+!solution/LTRDisplay_1_0_0_0_unmanaged.zip
 ~/Library/Microsoft/PowerAppsCli/
 **/PowerAppsCli/usersettings.json
