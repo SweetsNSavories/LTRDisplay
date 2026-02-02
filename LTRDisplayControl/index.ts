@@ -27,12 +27,14 @@ export class LTRDisplayControl implements ComponentFramework.StandardControl<IIn
     private renderControl(context: ComponentFramework.Context<IInputs>): void {
         const targetEntity = context.parameters.targetEntity.raw || "";
         const isArchive = context.parameters.isArchive.raw === true;
+        const ltrEntities = context.parameters.ltrEntities?.raw || "";
 
         ReactDOM.render(
             React.createElement(App, {
                 context: context,
                 targetEntity: targetEntity,
-                isArchive: isArchive
+                isArchive: isArchive,
+                ltrEntities
             }),
             this._container
         );

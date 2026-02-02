@@ -31,6 +31,15 @@ export class LtrService {
         diag.info(`LtrService initialized for entity '${targetEntity}'`);
     }
 
+    private ensureRetainedFetch(fetchXml: string): string {
+        // Inject datasource="retained" on the root fetch for archive pulls.
+        if (!fetchXml) return fetchXml;
+        const alreadyTagged = /<fetch[^>]*datasource\s*=\s*"retained"/i.test(fetchXml);
+        if (alreadyTagged) return fetchXml;
+        const updated = fetchXml.replace(/<fetch\b([^>]*)>/i, (_match, attrs) => `<fetch${attrs} datasource="retained">`);
+        return updated || fetchXml;
+    }
+
     /**
      * Fetches the system views for the target entity
      */
@@ -94,6 +103,7 @@ export class LtrService {
     public async getLtrData(fetchXml: string, isArchive: boolean): Promise<any[]> {
         try {
             diag.info("Fetching LTR data", { entity: this._targetEntity, isArchive });
+            const effectiveFetch = isArchive ? this.ensureRetainedFetch(fetchXml) : fetchXml;
             // NOTE: If specific API is needed for LTR, replace this logic.
             // Some LTR implementations use a custom message or specific headers.
             // Assuming the fetchXml provided by the View is sufficient or needs modification.
@@ -105,7 +115,7 @@ export class LtrService {
             // in all versions. We might need specific implementation.
 
             // For standard FetchXML usage:
-            const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
+            const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(effectiveFetch)}`);
             diag.info("Fetched LTR data", { count: result.entities.length, isArchive });
             return result.entities;
         } catch (error) {
