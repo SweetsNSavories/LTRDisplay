@@ -56,7 +56,12 @@ jobs:
           if (-not (Test-Path Solution)) {
             pac solution init --publisher-name LTR_Publisher --publisher-prefix com --outputDirectory Solution
           }
-          pac solution add-reference --path .\LTRDisplayControl\LTRDisplayControl.pcfproj --solution-directory Solution
+
+      - name: Add PCF project reference
+        shell: pwsh
+        working-directory: Solution
+        run: |
+          pac solution add-reference --path ..\LTRDisplayControl\LTRDisplayControl.pcfproj
 
       - name: Build solution ZIPs
         shell: cmd
