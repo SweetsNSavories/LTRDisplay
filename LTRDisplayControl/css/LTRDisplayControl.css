@@ -1,0 +1,78 @@
+.ltr-display-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Inherit font from parent context */
+    font-family: inherit;
+}
+
+.ltr-header {
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.ltr-content {
+    flex: 1;
+    overflow: auto;
+    /* Use standard Fluent UI border color variable if available, else fallback */
+    border: 1px solid #edebe9;
+}
+
+/* Dynamic Grid Styles */
+.ltr-grid-row {
+    cursor: pointer;
+}
+
+.ltr-grid-row:hover {
+    background-color: #f3f2f1;
+}
+
+/* Dynamic Form Styles */
+.ltr-form-container {
+    padding: 20px;
+}
+
+.ltr-form-tab {
+    margin-bottom: 20px;
+}
+
+.ltr-form-section {
+    margin-bottom: 15px;
+    border: 1px solid #e1dfdd;
+    padding: 10px;
+}
+
+.ltr-form-section-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #e1dfdd;
+    padding-bottom: 5px;
+}
+
+.ltr-form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.ltr-form-cell {
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ltr-field-label {
+    /* Rely on Fluent UI Label component styles instead of hardcoding */
+    margin-bottom: 4px;
+}
+
+.ltr-field-value {
+    /* Mimic standard read-only field appearance without forcing generic colors */
+    padding: 5px;
+    border-bottom: 1px solid #edebe9;
+    /* Standard underline style usually */
+    min-height: 20px;
+}

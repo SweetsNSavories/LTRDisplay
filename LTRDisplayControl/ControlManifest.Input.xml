@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest>
+  <control namespace="LTRDisplay" constructor="LTRDisplayControl" version="0.0.1" display-name-key="LTRDisplayControl" description-key="LTRDisplayControl description" control-type="standard" >
+    <external-service-usage enabled="false">
+      <!-- domain listing for external services if needed -->
+    </external-service-usage>
+    <property name="targetEntity" display-name-key="Target Entity" description-key="Logical name of the entity to fetch LTR data for" of-type="SingleLine.Text" usage="input" required="true" />
+    <property name="isArchive" display-name-key="Is Archive Source" description-key="Set to true if fetching from active archive store" of-type="TwoOptions" usage="input" required="true" default-value="true" />
+    
+    <resources>
+      <code path="index.ts" order="1"/>
+      <!-- React and FluentUI global CSS will be bundled by pcf-scripts via standard import in index.ts -->
+      <css path="css/LTRDisplayControl.css" order="1" />
+    </resources>
+  </control>
+</manifest>

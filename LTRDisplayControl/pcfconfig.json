@@ -1,0 +1,10 @@
+{
+  "namespace": "LTRDisplayControl",
+  "outputPath": "./out/controls",
+  "controlId": "LTRDisplayControl",
+  "controlDisplayName": "LTR Display Control",
+  "controlDescription": "A PCF control to display Long Term Retention (LTR) data in Model-Driven Apps.",
+  "version": "1.0.0",
+  "pcfProjectRoot": "./LTRDisplayControl",
+  "manifest": "./LTRDisplayControl/ControlManifest.Input.xml"
+}

@@ -1,0 +1,7 @@
+node_modules/
+out/
+obj/
+bin/
+Solution/
+pac-installer.pkg
+*.zip
