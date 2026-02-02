@@ -1,0 +1,5 @@
+{
+  "msbuild-sdks": {
+    "Microsoft.PowerApps.ComponentFramework.CSharpProj": "1.7.9"
+  }
+}

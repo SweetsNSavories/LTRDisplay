@@ -1,0 +1,67 @@
+name: Build PCF Solution
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.json'
+      - '**/*.pcfproj'
+      - '**/*.xml'
+      - 'package-lock.json'
+      - 'package.json'
+      - '.github/workflows/build-pcf-solution.yml'
+
+jobs:
+  build-solution:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Power Platform CLI
+        shell: pwsh
+        run: |
+          winget install --id Microsoft.PowerAppsCLI -e --accept-source-agreements --accept-package-agreements
+          $pacPath = "C:\\Program Files (x86)\\Microsoft Power Apps CLI"
+          if (Test-Path $pacPath) { Add-Content -Path $env:GITHUB_PATH -Value $pacPath }
+          pac --version
+
+      - name: Install npm dependencies
+        working-directory: LTRDisplayControl
+        run: npm install
+
+      - name: Build PCF control
+        working-directory: LTRDisplayControl
+        run: npm run build
+
+      - name: Initialize solution wrapper
+        shell: pwsh
+        run: |
+          if (-not (Test-Path Solution)) {
+            pac solution init --publisher-id com --publisher-name "LTR Publisher"
+          }
+          pac solution add-reference .\LTRDisplayControl\LTRDisplayControl.pcfproj
+
+      - name: Build solution ZIPs
+        shell: cmd
+        run: msbuild .\Solution\Solution.cdsproj /restore /t:rebuild /p:configuration=Release
+
+      - name: Upload solution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcf-solution-zips
+          path: Solution/bin/Release/*.zip
