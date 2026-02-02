@@ -5,3 +5,5 @@ bin/
 Solution/
 pac-installer.pkg
 *.zip
+~/Library/Microsoft/PowerAppsCli/
+**/PowerAppsCli/usersettings.json
