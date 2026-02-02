@@ -26,6 +26,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: npm
+          cache-dependency-path: LTRDisplayControl/package-lock.json
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -44,7 +46,7 @@ jobs:
 
       - name: Install npm dependencies
         working-directory: LTRDisplayControl
-        run: npm install
+        run: npm ci
 
       - name: Build PCF control
         working-directory: LTRDisplayControl
@@ -64,8 +66,10 @@ jobs:
           pac solution add-reference --path ..\LTRDisplayControl\LTRDisplayControl.pcfproj
 
       - name: Build solution ZIPs
-        shell: cmd
-        run: msbuild .\Solution\Solution.cdsproj /restore /t:rebuild /p:configuration=Release
+        shell: pwsh
+        working-directory: Solution
+        run: |
+          dotnet build .\Solution.cdsproj -c Release
 
       - name: Upload solution artifacts
         uses: actions/upload-artifact@v4
