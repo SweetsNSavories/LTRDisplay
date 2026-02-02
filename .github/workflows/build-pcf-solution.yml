@@ -37,6 +37,8 @@ jobs:
         run: |
           dotnet tool install --global Microsoft.PowerApps.CLI.Tool
           $toolPath = "$env:USERPROFILE/.dotnet/tools"
+          # Ensure pac is available now and for subsequent steps
+          $env:PATH = "$toolPath;" + $env:PATH
           Add-Content -Path $env:GITHUB_PATH -Value $toolPath
           pac help
 
@@ -52,9 +54,9 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path Solution)) {
-            pac solution init --publisher-id com --publisher-name "LTR Publisher"
+            pac solution init --publisher-id com --publisher-name "LTR Publisher" --publisher-prefix com
           }
-          pac solution add-reference .\LTRDisplayControl\LTRDisplayControl.pcfproj
+          pac solution add-reference --path .\LTRDisplayControl\LTRDisplayControl.pcfproj
 
       - name: Build solution ZIPs
         shell: cmd
