@@ -69,7 +69,9 @@ jobs:
         shell: pwsh
         working-directory: Solution
         run: |
-          dotnet build .\Solution.cdsproj -c Release
+          $env:NUGET_CERT_REVOCATION_MODE = "offline"
+          dotnet restore .\Solution.cdsproj --configfile ..\NuGet.config --ignore-failed-sources
+          dotnet build .\Solution.cdsproj -c Release --configfile ..\NuGet.config --ignore-failed-sources
 
       - name: Upload solution artifacts
         uses: actions/upload-artifact@v4
