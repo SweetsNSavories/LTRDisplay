@@ -32,7 +32,7 @@ jobs:
       - name: Configure NuGet feeds
         shell: pwsh
         run: |
-          @"
+          $xml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
@@ -40,7 +40,8 @@ jobs:
     <add key="PowerAppsTools" value="https://pkgs.dev.azure.com/dynamicscrm/PowerAppsTools/_packaging/PowerAppsTools/nuget/v3/index.json" />
   </packageSources>
 </configuration>
-"@ | Set-Content NuGet.config
+'@
+          $xml | Set-Content NuGet.config
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
