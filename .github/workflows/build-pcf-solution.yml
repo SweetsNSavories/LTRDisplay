@@ -37,7 +37,7 @@ jobs:
       - name: Install Power Platform CLI
         shell: pwsh
         run: |
-          dotnet tool install --global Microsoft.PowerApps.CLI.Tool
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool --add-source https://api.nuget.org/v3/index.json --ignore-failed-sources
           $toolPath = "$env:USERPROFILE/.dotnet/tools"
           # Ensure pac is available now and for subsequent steps
           $env:PATH = "$toolPath;" + $env:PATH
