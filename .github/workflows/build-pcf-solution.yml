@@ -54,9 +54,9 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path Solution)) {
-            pac solution init --publisher-id com --publisher-name "LTR Publisher" --publisher-prefix com
+            pac solution init --publisher-name LTR_Publisher --publisher-prefix com --outputDirectory Solution
           }
-          pac solution add-reference --path .\LTRDisplayControl\LTRDisplayControl.pcfproj
+          pac solution add-reference --path .\LTRDisplayControl\LTRDisplayControl.pcfproj --solution-directory Solution
 
       - name: Build solution ZIPs
         shell: cmd
