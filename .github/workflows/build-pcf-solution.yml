@@ -38,7 +38,7 @@ jobs:
           dotnet tool install --global Microsoft.PowerApps.CLI.Tool
           $toolPath = "$env:USERPROFILE/.dotnet/tools"
           Add-Content -Path $env:GITHUB_PATH -Value $toolPath
-          pac --version
+          pac help
 
       - name: Install npm dependencies
         working-directory: LTRDisplayControl
