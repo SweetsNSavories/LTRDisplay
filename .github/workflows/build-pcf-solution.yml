@@ -37,7 +37,16 @@ jobs:
         run: |
           winget install --id Microsoft.PowerAppsCLI -e --accept-source-agreements --accept-package-agreements
           $pacPath = "C:\\Program Files (x86)\\Microsoft Power Apps CLI"
-          if (Test-Path $pacPath) { Add-Content -Path $env:GITHUB_PATH -Value $pacPath }
+          if (-not (Test-Path $pacPath)) {
+            Write-Error "pac install folder not found at $pacPath"
+          }
+          # Add folder to PATH for subsequent steps
+          Add-Content -Path $env:GITHUB_PATH -Value $pacPath
+          # Verify pac is reachable
+          $pacExe = Get-Command pac -ErrorAction SilentlyContinue
+          if (-not $pacExe) {
+            Write-Error "pac not found on PATH"
+          }
           pac --version
 
       - name: Install npm dependencies
