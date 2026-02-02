@@ -32,7 +32,14 @@ jobs:
       - name: Configure NuGet feeds
         shell: pwsh
         run: |
-          $xml = "<configuration>`n  <packageSources>`n    <add key=\"nuget.org\" value=\"https://api.nuget.org/v3/index.json\" />`n    <add key=\"PowerAppsTools\" value=\"https://pkgs.dev.azure.com/dynamicscrm/PowerAppsTools/_packaging/PowerAppsTools/nuget/v3/index.json\" />`n  </packageSources>`n</configuration>"
+          $xml = @'
+<configuration>
+  <packageSources>
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+    <add key="PowerAppsTools" value="https://pkgs.dev.azure.com/dynamicscrm/PowerAppsTools/_packaging/PowerAppsTools/nuget/v3/index.json" />
+  </packageSources>
+</configuration>
+'@
           Set-Content NuGet.config -Value $xml
 
       - name: Setup .NET
