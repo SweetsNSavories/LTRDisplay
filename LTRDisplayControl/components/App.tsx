@@ -7,6 +7,7 @@ import { DynamicForm } from './DynamicForm';
 import { Dropdown } from '@fluentui/react/lib/Dropdown';
 import { ComboBox, IComboBoxOption } from '@fluentui/react/lib/ComboBox';
 import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
+import { Toggle } from '@fluentui/react/lib/Toggle';
 import { diag } from '../utils/Diagnostics';
 
 interface IAppProps {
@@ -27,6 +28,7 @@ const App: React.FC<IAppProps> = (props) => {
     // State
     const [entityOptions, setEntityOptions] = React.useState<IEntityOption[]>([]);
     const [selectedEntity, setSelectedEntity] = React.useState<string>(targetEntity || "");
+    const [archiveMode, setArchiveMode] = React.useState<boolean>(isArchive);
     const ltrService = React.useMemo(() => new LtrService(context, selectedEntity), [context, selectedEntity]);
     const [loading, setLoading] = React.useState<boolean>(false);
     const [views, setViews] = React.useState<IViewDefinition[]>([]);
@@ -114,7 +116,8 @@ const App: React.FC<IAppProps> = (props) => {
             diag.info("Parsed layout columns", { count: columns.length });
 
             // 2. Fetch Data
-            const data = await ltrService.getLtrData(view.fetchXml, isArchive);
+            diag.info("Fetching grid data", { viewId, archiveMode, entity: selectedEntity });
+            const data = await ltrService.getLtrData(view.fetchXml, archiveMode);
             setGridData(data);
             diag.info("Grid data loaded", { count: data.length });
         } catch (err) {
@@ -146,7 +149,8 @@ const App: React.FC<IAppProps> = (props) => {
             let record = gridData.find(r => r[targetEntity + 'id'] === id || r.id === id); // naive check
 
             if (!record) {
-                record = await ltrService.getRecordDetails(id, isArchive);
+                diag.info("Record not in grid, fetching details", { id, archiveMode });
+                record = await ltrService.getRecordDetails(id, archiveMode);
             }
 
             if (!record) {
@@ -161,8 +165,9 @@ const App: React.FC<IAppProps> = (props) => {
 
             setSelectedRecord(record);
             setViewMode('FORM');
+            diag.info("Form view opened", { recordId: id, archiveMode });
         } catch (err) {
-            diag.error("Record select failed", err, { id, isArchive });
+            diag.error("Record select failed", err, { id, archiveMode });
         }
     };
 
@@ -190,6 +195,11 @@ const App: React.FC<IAppProps> = (props) => {
         setViewMode('GRID');
     };
 
+    const onToggleArchive = (_ev: any, checked?: boolean) => {
+        diag.info("Archive mode toggled", { newValue: !!checked });
+        setArchiveMode(!!checked);
+    };
+
     return (
         <div className="ltr-app">
             {loading && <Spinner size={SpinnerSize.large} label="Loading LTR Data..." />}
@@ -206,6 +216,16 @@ const App: React.FC<IAppProps> = (props) => {
                         useComboBoxAsMenuWidth
                         placeholder="Type logical or display name"
                         styles={{ root: { width: 320, marginRight: 12 } }}
+                    />
+                )}
+                {!loading && (
+                    <Toggle
+                        label="Data Source"
+                        onText="Archive (LTR)"
+                        offText="Active (Dataverse)"
+                        checked={archiveMode}
+                        onChange={onToggleArchive}
+                        styles={{ root: { width: 180, marginRight: 12 } }}
                     />
                 )}
                 {!loading && viewMode === 'GRID' && (

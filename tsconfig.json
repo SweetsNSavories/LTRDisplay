@@ -4,7 +4,14 @@
         "typeRoots": [
             "node_modules/@types"
         ],
-        "jsx": "react",
+        "types": [
+            "powerapps-component-framework",
+            "react",
+            "react-dom"
+        ],
+        "target": "ES2015",
+        "module": "es2015",
+        "moduleResolution": "node",
         "lib": [
             "es6",
             "dom",
@@ -14,6 +21,19 @@
             "es2018",
             "es2019",
             "es2020"
-        ]
-    }
+        ],
+        "jsx": "react",
+        "strict": false,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "noImplicitAny": false
+    },
+    "include": [
+        "LTRDisplayControl/index.ts",
+        "LTRDisplayControl/components/**/*.tsx",
+        "LTRDisplayControl/services/**/*.ts",
+        "LTRDisplayControl/utils/**/*.ts",
+        "LTRDisplayControl/generated/**/*.ts"
+    ]
 }

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest>
-  <control namespace="LTRDisplay" constructor="LTRDisplayControl" version="0.0.1" display-name-key="LTRDisplayControl" description-key="LTRDisplayControl description" control-type="standard" >
+  <control namespace="LTRDisplay" constructor="LTRDisplayControl" version="0.0.4" display-name-key="LTRDisplayControl" description-key="LTRDisplayControl description" control-type="standard" >
     <external-service-usage enabled="false">
       <!-- domain listing for external services if needed -->
     </external-service-usage>

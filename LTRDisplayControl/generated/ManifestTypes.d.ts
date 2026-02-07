@@ -6,6 +6,7 @@
 export interface IInputs {
     targetEntity: ComponentFramework.PropertyTypes.StringProperty;
     isArchive: ComponentFramework.PropertyTypes.TwoOptionsProperty;
+    ltrEntities: ComponentFramework.PropertyTypes.StringProperty;
 }
 export interface IOutputs {
 }

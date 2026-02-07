@@ -49,7 +49,7 @@
   </ItemGroup>
   
   <ItemGroup>
-    <ProjectReference Include="..\LTRDisplayControl\LTRDisplayControl.pcfproj" />
+    <ProjectReference Include="..\LTRDisplayControl.pcfproj" />
   </ItemGroup>
 
   <Import Project="$(MSBuildToolsPath)\Microsoft.Common.targets" />
