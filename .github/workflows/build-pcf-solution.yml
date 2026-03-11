@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: 18
           cache: npm
-          cache-dependency-path: LTRDisplayControl/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -47,11 +47,9 @@ jobs:
           pac help
 
       - name: Install npm dependencies
-        working-directory: LTRDisplayControl
         run: npm ci
 
       - name: Build PCF control
-        working-directory: LTRDisplayControl
         run: npm run build
 
       - name: Restore solution NuGet packages
