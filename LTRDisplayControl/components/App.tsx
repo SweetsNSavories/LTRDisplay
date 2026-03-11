@@ -108,7 +108,7 @@ const App: React.FC<IAppProps> = (props) => {
                 return;
             }
 
-            diag.info("View selected", { viewId, viewName: view.name, isArchive, entity: selectedEntity });
+            diag.info("View selected", { viewId, viewName: view.name, archiveMode, entity: selectedEntity });
 
             // 1. Parse Layout
             const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
@@ -146,7 +146,7 @@ const App: React.FC<IAppProps> = (props) => {
     const handleRecordSelect = async (id: string) => {
         try {
             diag.info("Record selected", { id });
-            let record = gridData.find(r => r[targetEntity + 'id'] === id || r.id === id); // naive check
+            let record = gridData.find(r => r[selectedEntity + 'id'] === id || r.id === id); // naive check
 
             if (!record) {
                 diag.info("Record not in grid, fetching details", { id, archiveMode });
