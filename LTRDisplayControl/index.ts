@@ -1,13 +1,14 @@
 /// <reference path="./generated/ManifestTypes.d.ts" />
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import { createRoot, Root } from "react-dom/client";
 import App from "./components/App";
 
 export class LTRDisplayControl implements ComponentFramework.StandardControl<IInputs, IOutputs> {
     private _notifyOutputChanged: () => void;
     private _container: HTMLDivElement;
     private _context: ComponentFramework.Context<IInputs>;
+    private _root: Root | null = null;
 
     constructor() { }
 
@@ -15,6 +16,7 @@ export class LTRDisplayControl implements ComponentFramework.StandardControl<IIn
         this._context = context;
         this._notifyOutputChanged = notifyOutputChanged;
         this._container = container;
+        this._root = createRoot(this._container);
 
         this.renderControl(context);
     }
@@ -29,14 +31,13 @@ export class LTRDisplayControl implements ComponentFramework.StandardControl<IIn
         const isArchive = context.parameters.isArchive.raw === true;
         const ltrEntities = context.parameters.ltrEntities?.raw || "";
 
-        ReactDOM.render(
+        this._root?.render(
             React.createElement(App, {
                 context: context,
                 targetEntity: targetEntity,
                 isArchive: isArchive,
                 ltrEntities
-            }),
-            this._container
+            })
         );
     }
 
@@ -45,6 +46,7 @@ export class LTRDisplayControl implements ComponentFramework.StandardControl<IIn
     }
 
     public destroy(): void {
-        ReactDOM.unmountComponentAtNode(this._container);
+        this._root?.unmount();
+        this._root = null;
     }
 }
