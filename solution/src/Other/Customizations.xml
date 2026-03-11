@@ -1,6 +1,77 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ImportExportXml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <Entities />
+  <Entities>
+    <Entity>
+      <Name LocalizedName="User" OriginalName="User">systemuser</Name>
+      <EntityInfo>
+        <entity Name="systemuser">
+          <FormXml>
+            <forms type="main">
+              <form LocalizedName="LTR Display" UniqueId="{9b332a14-d6ce-4f3b-b5b4-a5f1c7b32abc}" version="2.0" IsAIRMerged="1">
+                <form>
+                  <header useLayout="false" />
+                  <tabs>
+                    <tab name="TAB_LTRDisplay" id="{2f4a8c11-1234-5678-9012-abcdef123456}" IsUserDefined="0" locklevel="0" showlabel="true" expanded="true">
+                      <labels>
+                        <label description="LTR Display" languagecode="1033" />
+                      </labels>
+                      <columns>
+                        <column width="100%">
+                          <sections>
+                            <section name="SECTION_LTRDisplay" id="{3e5b9d22-abcd-efab-cdef-123456789abc}" IsUserDefined="0" locklevel="0" showlabel="true" showbar="false" labelwidth="115" columns="1">
+                              <labels>
+                                <label description="LTR Display Control" languagecode="1033" />
+                              </labels>
+                              <rows>
+                                <row>
+                                  <cell id="{4f6c0e33-bcde-fabc-def0-23456789abcd}" showlabel="false" locklevel="0" rowspan="20" colspan="1">
+                                    <labels>
+                                      <label description="LTR Display" languagecode="1033" />
+                                    </labels>
+                                    <control id="fullname" classid="{4273EDBD-AC1D-40d3-9FB2-095C621B552D}" datafieldname="fullname" disabled="false">
+                                      <customControl formFactor="0" name="LTRDisplay.LTRDisplayControl">
+                                        <parameters>
+                                          <targetEntity static="true" type="SingleLine.Text">systemuser</targetEntity>
+                                          <isArchive static="true" type="TwoOptions">1</isArchive>
+                                        </parameters>
+                                      </customControl>
+                                      <customControl formFactor="1" name="LTRDisplay.LTRDisplayControl">
+                                        <parameters>
+                                          <targetEntity static="true" type="SingleLine.Text">systemuser</targetEntity>
+                                          <isArchive static="true" type="TwoOptions">1</isArchive>
+                                        </parameters>
+                                      </customControl>
+                                      <customControl formFactor="2" name="LTRDisplay.LTRDisplayControl">
+                                        <parameters>
+                                          <targetEntity static="true" type="SingleLine.Text">systemuser</targetEntity>
+                                          <isArchive static="true" type="TwoOptions">1</isArchive>
+                                        </parameters>
+                                      </customControl>
+                                    </control>
+                                  </cell>
+                                </row>
+                              </rows>
+                            </section>
+                          </sections>
+                        </column>
+                      </columns>
+                    </tab>
+                  </tabs>
+                  <footer />
+                </form>
+                <LocalizedNames>
+                  <LocalizedName description="LTR Display" languagecode="1033" />
+                </LocalizedNames>
+                <Descriptions>
+                  <Description description="LTR Display form for systemuser entity" languagecode="1033" />
+                </Descriptions>
+              </form>
+            </forms>
+          </FormXml>
+        </entity>
+      </EntityInfo>
+    </Entity>
+  </Entities>
   <Roles />
   <Workflows />
   <FieldSecurityProfiles />
@@ -9,7 +80,14 @@
   <EntityRelationships />
   <OrganizationSettings />
   <optionsets />
-  <CustomControls />
+  <CustomControls>
+    <CustomControl Name="LTRDisplay.LTRDisplayControl" Version="0.0.4">
+      <CustomControlResources>
+        <CustomControlResource />
+      </CustomControlResources>
+      <CustomControlDependencies />
+    </CustomControl>
+  </CustomControls>
   <SolutionPluginAssemblies />
   <EntityDataProviders />
   <Languages>

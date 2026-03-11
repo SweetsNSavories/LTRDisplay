@@ -18,6 +18,8 @@ on:
 jobs:
   build-solution:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,29 +54,75 @@ jobs:
         working-directory: LTRDisplayControl
         run: npm run build
 
-      - name: Initialize solution wrapper
+      - name: Restore solution NuGet packages
         shell: pwsh
-        run: |
-          if (-not (Test-Path Solution)) {
-            pac solution init --publisher-name LTR_Publisher --publisher-prefix com --outputDirectory Solution
-          }
-
-      - name: Add PCF project reference
-        shell: pwsh
-        working-directory: Solution
-        run: |
-          pac solution add-reference --path ..\LTRDisplayControl\LTRDisplayControl.pcfproj
-
-      - name: Build solution ZIPs
-        shell: pwsh
-        working-directory: Solution
+        working-directory: solution
         run: |
           $env:NUGET_CERT_REVOCATION_MODE = "offline"
-          dotnet restore .\Solution.cdsproj --configfile ..\NuGet.config --ignore-failed-sources
-          dotnet build .\Solution.cdsproj -c Release --configfile ..\NuGet.config --ignore-failed-sources
+          dotnet restore .\solution.cdsproj --configfile ..\NuGet.config --ignore-failed-sources
+
+      - name: Build solution ZIPs (managed + unmanaged)
+        shell: pwsh
+        working-directory: solution
+        run: |
+          $env:NUGET_CERT_REVOCATION_MODE = "offline"
+          dotnet build .\solution.cdsproj -c Release --configfile ..\NuGet.config --ignore-failed-sources
 
       - name: Upload solution artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pcf-solution-zips
-          path: Solution/bin/Release/*.zip
+          path: solution/bin/Release/*.zip
+
+  deploy-solution:
+    needs: build-solution
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    # Only deploy on pushes to main when all required secrets are present
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      vars.DEPLOY_TO_DATAVERSE == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install Power Platform CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global Microsoft.PowerApps.CLI.Tool --add-source https://api.nuget.org/v3/index.json --ignore-failed-sources
+          $toolPath = "$env:USERPROFILE/.dotnet/tools"
+          $env:PATH = "$toolPath;" + $env:PATH
+          Add-Content -Path $env:GITHUB_PATH -Value $toolPath
+
+      - name: Download solution artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pcf-solution-zips
+          path: dist
+
+      - name: Authenticate to Dataverse
+        shell: pwsh
+        run: |
+          pac auth create `
+            --url "${{ secrets.DATAVERSE_ORG_URL }}" `
+            --applicationId "${{ secrets.DATAVERSE_APP_ID }}" `
+            --clientSecret "${{ secrets.DATAVERSE_CLIENT_SECRET }}" `
+            --tenant "${{ secrets.DATAVERSE_TENANT_ID }}"
+
+      - name: Import managed solution
+        shell: pwsh
+        run: |
+          $managedZip = Get-ChildItem -Path dist -Filter "*_managed.zip" | Select-Object -First 1
+          if ($managedZip) {
+            pac solution import --path $managedZip.FullName --activate-plugins
+          } else {
+            Write-Error "Managed solution ZIP not found in dist/. Verify that the build-solution job completed successfully and produced a *_managed.zip artifact."
+          }
+
