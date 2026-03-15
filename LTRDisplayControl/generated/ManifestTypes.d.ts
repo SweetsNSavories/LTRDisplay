@@ -5,8 +5,10 @@
 // Define IInputs and IOutputs Type. They should match with ControlManifest.
 export interface IInputs {
     targetEntity: ComponentFramework.PropertyTypes.StringProperty;
+    boundValue: ComponentFramework.PropertyTypes.StringProperty;
     isArchive: ComponentFramework.PropertyTypes.TwoOptionsProperty;
     ltrEntities: ComponentFramework.PropertyTypes.StringProperty;
 }
 export interface IOutputs {
+    boundValue?: string;
 }

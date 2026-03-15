@@ -10,8 +10,9 @@
 .ltr-header {
     margin-bottom: 15px;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .ltr-content {
@@ -30,9 +31,138 @@
     background-color: #f3f2f1;
 }
 
+.ltr-grid-header-cell {
+    display: flex;
+    flex-direction: column;
+}
+
+.ltr-grid-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.ltr-grid-header-title {
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.ltr-grid-filter-icon {
+    min-width: 24px;
+    width: 24px;
+    height: 24px;
+}
+
+.ltr-grid-filter-icon.active i {
+    color: #005a9e;
+}
+
+.ltr-grid-filter-callout {
+    max-width: 320px;
+}
+
+.ltr-grid-filter-flyout {
+    padding: 12px;
+    min-width: 260px;
+}
+
+.ltr-grid-filter-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.ltr-grid-filter-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ltr-grid-pagination {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    min-height: 40px;
+}
+
+.ltr-grid-pagination-bottom {
+    border-top: 1px solid #edebe9;
+}
+
+.ltr-grid-pagination-summary {
+    font-weight: 600;
+    min-width: 100px;
+    font-size: 12px;
+}
+
+.ltr-grid-pagination-page {
+    min-width: 100px;
+    text-align: center;
+    font-size: 12px;
+}
+
+.ltr-grid-pagination-inline-label {
+    font-weight: 600;
+    font-size: 12px;
+}
+
 /* Dynamic Form Styles */
 .ltr-form-container {
     padding: 20px;
+}
+
+.ltr-form-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.ltr-back-button {
+    cursor: pointer;
+    padding: 5px 10px;
+    line-height: 1;
+    align-self: center;
+}
+
+.ltr-form-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.ltr-form-record-title {
+    font-size: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ltr-form-title-sep {
+    color: #605e5c;
+    font-weight: 600;
+}
+
+.ltr-form-owner {
+    white-space: nowrap;
+    color: #323130;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ltr-form-tab-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.ltr-form-tab-column {
+    min-width: 0;
 }
 
 .ltr-form-tab {
@@ -61,12 +191,15 @@
 .ltr-form-cell {
     padding: 5px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
 }
 
 .ltr-field-label {
-    /* Rely on Fluent UI Label component styles instead of hardcoding */
-    margin-bottom: 4px;
+    /* Keep labels aligned in a stable left column like native detail forms */
+    min-width: 180px;
+    margin-bottom: 0;
 }
 
 .ltr-field-value {
@@ -75,4 +208,85 @@
     border-bottom: 1px solid #edebe9;
     /* Standard underline style usually */
     min-height: 20px;
+    flex: 1;
+}
+
+.ltr-related-panel {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #edebe9;
+}
+
+.ltr-related-group {
+    border: 1px solid #edebe9;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.ltr-related-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.ltr-related-tab {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.ltr-related-list {
+    border: 1px solid #edebe9;
+    max-height: 420px;
+    overflow: auto;
+}
+
+.ltr-related-item {
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border: 0;
+    border-bottom: 1px solid #f3f2f1;
+    background: #fff;
+    cursor: pointer;
+}
+
+.ltr-related-item.active {
+    background: #f3f2f1;
+    font-weight: 600;
+}
+
+.ltr-related-grid-wrap {
+    border: 1px solid #edebe9;
+    padding: 10px;
+    min-height: 220px;
+}
+
+.ltr-related-grid-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.ltr-related-grid-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ltr-related-grid-table th,
+.ltr-related-grid-table td {
+    border-bottom: 1px solid #edebe9;
+    text-align: left;
+    padding: 8px;
+}
+
+.ltr-related-grid-row {
+    cursor: pointer;
+}
+
+.ltr-related-grid-row:hover {
+    background: #f3f2f1;
 }

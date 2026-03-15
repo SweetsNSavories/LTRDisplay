@@ -1,36 +1,59 @@
 import * as React from 'react';
 import { DetailsList, IColumn, SelectionMode, Selection, DetailsListLayoutMode } from '@fluentui/react/lib/DetailsList';
+import { TextField } from '@fluentui/react/lib/TextField';
+import { IconButton, PrimaryButton, DefaultButton } from '@fluentui/react/lib/Button';
+import { Callout, DirectionalHint } from '@fluentui/react/lib/Callout';
 import { IGridColumn } from '../utils/XmlParser';
 import { diag } from '../utils/Diagnostics';
 
 interface IDynamicGridProps {
     columns: IGridColumn[];
     data: any[];
-    onRecordSelect: (recordId: string) => void;
+    columnFilters: Record<string, string>;
+    onColumnFilterChange: (columnName: string, value: string) => void;
+    onRecordSelect: (record: any) => void;
+}
+
+const GUID_REGEX = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i;
+
+function resolveRecordId(item: any): string | undefined {
+    if (!item || typeof item !== 'object') {
+        return undefined;
+    }
+
+    if (typeof item.id === 'string' && GUID_REGEX.test(item.id)) {
+        return item.id.replace(/[{}]/g, '').toLowerCase();
+    }
+
+    const keys = Object.keys(item);
+    const primaryKey = keys.find(k => k.toLowerCase().endsWith('id') && typeof item[k] === 'string' && GUID_REGEX.test(item[k]));
+    if (primaryKey) {
+        return item[primaryKey].replace(/[{}]/g, '').toLowerCase();
+    }
+
+    return undefined;
 }
 
 export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
-    const { columns, data, onRecordSelect } = props;
+    const { columns, data, columnFilters, onColumnFilterChange, onRecordSelect } = props;
+    const [activeFilterColumn, setActiveFilterColumn] = React.useState<string>();
+    const [filterDraft, setFilterDraft] = React.useState<string>('');
+    const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement>();
 
     const _selection = new Selection({
         onSelectionChanged: () => {
             const selected = _selection.getSelection();
             if (selected.length > 0) {
                 const item = selected[0] as any;
-                // Assuming entity logical name is standard, the ID field is usually entityid but we need to know the primary key
-                // For simplified PCF usage, we often grab the first GUID-like field or pass primary key name
-                // Here we will try to find a field ending in 'id' or use a strict contract
-                // For now, let's assume the data object has an 'id' property or similar mapped by the service
-                // PRO TIP: The WebAPI response usually has entityid as the primary key property, e.g. 'incidentid'
-                // effectively we pass the whole object back or just the ID if we can guess it.
-                // Let's pass the whole item and let App handle extraction or guess the ID.
-                const possibleId = item.id || item.incidentid; // Fallback for specific case, will refine
+                const possibleId = resolveRecordId(item);
                 if (possibleId) {
                     diag.info("Grid row selected", { possibleId });
-                    onRecordSelect(possibleId);
                 } else {
-                    diag.error("Grid selection missing id", null, { itemSample: Object.keys(item) });
+                    diag.info("Grid row selected without direct id, forwarding row object", {
+                        itemSample: Object.keys(item || {})
+                    });
                 }
+                onRecordSelect(item);
             }
         }
     });
@@ -41,8 +64,52 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
         fieldName: c.name,
         minWidth: c.width,
         maxWidth: c.width * 2,
-        isResizable: true
+        isResizable: true,
+        onRenderHeader: () => {
+            const isFiltered = !!(columnFilters[c.name] || '').trim();
+            return (
+                <div className="ltr-grid-header-cell">
+                    <div className="ltr-grid-header-row">
+                        <div className="ltr-grid-header-title">{c.displayName || c.name}</div>
+                        <IconButton
+                            iconProps={{ iconName: 'Filter' }}
+                            title={isFiltered ? 'Filter applied' : 'Filter column'}
+                            ariaLabel={isFiltered ? 'Filter applied' : 'Filter column'}
+                            className={isFiltered ? 'ltr-grid-filter-icon active' : 'ltr-grid-filter-icon'}
+                            onClick={(ev) => {
+                                setActiveFilterColumn(c.name);
+                                setFilterDraft(columnFilters[c.name] || '');
+                                setFilterAnchor(ev.currentTarget as HTMLElement);
+                            }}
+                        />
+                    </div>
+                </div>
+            );
+        }
     }));
+
+    const applyFilter = () => {
+        if (!activeFilterColumn) {
+            return;
+        }
+        onColumnFilterChange(activeFilterColumn, filterDraft);
+        setFilterAnchor(undefined);
+    };
+
+    const clearFilter = () => {
+        if (!activeFilterColumn) {
+            return;
+        }
+        onColumnFilterChange(activeFilterColumn, '');
+        setFilterDraft('');
+        setFilterAnchor(undefined);
+    };
+
+    const closeFlyout = () => {
+        setFilterAnchor(undefined);
+    };
+
+    const activeColumnDisplay = columns.find(c => c.name === activeFilterColumn)?.displayName || activeFilterColumn || '';
 
     return (
         <div className="ltr-grid-container">
@@ -53,7 +120,46 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
                 selection={_selection}
                 layoutMode={DetailsListLayoutMode.justified}
                 isHeaderVisible={true}
+                onItemInvoked={(item) => {
+                    const possibleId = resolveRecordId(item);
+                    if (possibleId) {
+                        diag.info("Grid row invoked", { possibleId });
+                    } else {
+                        diag.info("Grid row invoked without direct id, forwarding row object", {
+                            itemSample: Object.keys(item || {})
+                        });
+                    }
+                    onRecordSelect(item);
+                }}
             />
+
+            {filterAnchor && (
+                <Callout
+                    className="ltr-grid-filter-callout"
+                    target={filterAnchor}
+                    onDismiss={closeFlyout}
+                    setInitialFocus
+                    directionalHint={DirectionalHint.bottomAutoEdge}
+                >
+                    <div className="ltr-grid-filter-flyout">
+                        <div className="ltr-grid-filter-title">Filter {activeColumnDisplay}</div>
+                        <TextField
+                            value={filterDraft}
+                            placeholder="Enter value"
+                            onChange={(_e, value) => setFilterDraft(value || '')}
+                            onKeyDown={(ev) => {
+                                if (ev.key === 'Enter') {
+                                    applyFilter();
+                                }
+                            }}
+                        />
+                        <div className="ltr-grid-filter-actions">
+                            <PrimaryButton text="Apply" onClick={applyFilter} />
+                            <DefaultButton text="Clear" onClick={clearFilter} />
+                        </div>
+                    </div>
+                </Callout>
+            )}
         </div>
     );
 };

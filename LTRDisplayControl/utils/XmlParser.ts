@@ -11,8 +11,16 @@ export interface IFormTab {
     name: string;
     id: string;
     label: string;
+    columns: IFormTabColumn[];
     sections: IFormSection[];
     visible: boolean;
+}
+
+export interface IFormTabColumn {
+    id: string;
+    name: string;
+    width: number;
+    sections: IFormSection[];
 }
 
 export interface IFormSection {
@@ -85,12 +93,14 @@ export class XmlParserHelper {
             const tabsArray = Array.isArray(tabsRoot) ? tabsRoot : [tabsRoot];
 
             return tabsArray.map((t: any) => {
+                const columns = this.parseColumns(t.columns?.column);
                 return {
                     name: t["@_name"],
                     id: t["@_id"],
-                    label: t.labels?.label?.["@_description"] || t["@_name"], // Simplify label fetch
+                    label: this.getLabel(t.labels?.label, t["@_name"]),
                     visible: t["@_visible"] !== "false",
-                    sections: this.parseSections(t.columns?.column) // Form XML structure varies, but usually tabs -> columns -> sections
+                    columns,
+                    sections: columns.flatMap((c: IFormTabColumn) => c.sections)
                 };
             });
 
@@ -100,28 +110,37 @@ export class XmlParserHelper {
         }
     }
 
-    private static parseSections(columnsCtx: any): IFormSection[] {
+    private static getLabel(labelNode: any, fallback: string): string {
+        if (!labelNode) return fallback;
+        if (Array.isArray(labelNode)) {
+            return labelNode[0]?.["@_description"] || fallback;
+        }
+        return labelNode["@_description"] || fallback;
+    }
+
+    private static parseColumns(columnsCtx: any): IFormTabColumn[] {
         if (!columnsCtx) return [];
 
-        // In FormXML, a tab has columns (usually 2 or 3), containing sections
         const columns = Array.isArray(columnsCtx) ? columnsCtx : [columnsCtx];
-        let sections: IFormSection[] = [];
+        return columns.map((col: any, index: number) => ({
+            id: col["@_id"] || `${col["@_name"] || "column"}_${index}`,
+            name: col["@_name"] || `column_${index + 1}`,
+            width: parseInt(col["@_width"] || "0", 10) || 1,
+            sections: this.parseSections(col.sections?.section)
+        }));
+    }
 
-        columns.forEach((col: any) => {
-            const secs = col.sections?.section;
-            if (secs) {
-                const secArray = Array.isArray(secs) ? secs : [secs];
-                sections = sections.concat(secArray.map((s: any) => ({
-                    name: s["@_name"],
-                    id: s["@_id"],
-                    label: s.labels?.label?.["@_description"] || s["@_name"] || "Section",
-                    visible: s["@_visible"] !== "false",
-                    rows: this.parseRows(s.rows?.row)
-                })));
-            }
-        });
+    private static parseSections(sectionsCtx: any): IFormSection[] {
+        if (!sectionsCtx) return [];
 
-        return sections;
+        const secArray = Array.isArray(sectionsCtx) ? sectionsCtx : [sectionsCtx];
+        return secArray.map((s: any) => ({
+            name: s["@_name"],
+            id: s["@_id"],
+            label: this.getLabel(s.labels?.label, s["@_name"] || "Section"),
+            visible: s["@_visible"] !== "false",
+            rows: this.parseRows(s.rows?.row)
+        }));
     }
 
     private static parseRows(rowsCtx: any): IFormRow[] {
