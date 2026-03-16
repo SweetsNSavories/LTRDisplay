@@ -4,7 +4,7 @@ import { Label } from '@fluentui/react/lib/Label';
 import { Pivot, PivotItem } from '@fluentui/react/lib/Pivot';
 import { DefaultButton } from '@fluentui/react/lib/Button';
 import { TextField } from '@fluentui/react/lib/TextField';
-import { IRelatedRelationship } from '../services/LtrService';
+import { IRelatedRelationship, IAuditHistoryGroup } from '../services/LtrService';
 
 interface IDynamicFormProps {
     formData: any;
@@ -16,6 +16,8 @@ interface IDynamicFormProps {
     formOptions: { key: string; text: string }[];
     onFormChange: (formId: string) => void;
     selectedRecordId?: string;
+    auditHistory?: IAuditHistoryGroup[];
+    auditLoading?: boolean;
     relatedDefinitions: IRelatedRelationship[];
     relatedData: Record<string, any[]>;
     relatedLoading: Record<string, boolean>;
@@ -115,6 +117,8 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
         formOptions,
         onFormChange,
         selectedRecordId,
+        auditHistory,
+        auditLoading,
         relatedDefinitions,
         relatedData,
         relatedLoading,
@@ -218,13 +222,37 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
         return result;
     }, [formDefinition, formData]);
 
+    const fieldLabelMap = React.useMemo(() => {
+        const labels = new Map<string, string>();
+        for (const tab of formDefinition || []) {
+            const sections = tab.columns?.flatMap(c => c.sections || []) || tab.sections || [];
+            for (const section of sections || []) {
+                for (const row of section.rows || []) {
+                    for (const cell of row.cells || []) {
+                        if (!cell?.fieldName) continue;
+                        const key = String(cell.fieldName).toLowerCase();
+                        const normalized = key.replace(/^_/, '').replace(/_value$/, '');
+                        const label = cell.label || cell.fieldName;
+                        if (!labels.has(key)) {
+                            labels.set(key, label);
+                        }
+                        if (!labels.has(normalized)) {
+                            labels.set(normalized, label);
+                        }
+                    }
+                }
+            }
+        }
+        return labels;
+    }, [formDefinition]);
+
     const recordDataRows = React.useMemo(() => {
         if (!formData || typeof formData !== 'object') {
-            return [] as { key: string; value: string }[];
+            return [] as { key: string; label: string; value: string }[];
         }
 
         const ignoredPrefixes = ['odata.'];
-        const rows: { key: string; value: string }[] = [];
+        const rows: { key: string; label: string; value: string }[] = [];
 
         for (const key of Object.keys(formData)) {
             if (!key) continue;
@@ -239,11 +267,14 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                 ? String(formatted)
                 : String(raw);
 
-            rows.push({ key, value });
+            const normalized = key.toLowerCase().replace(/^_/, '').replace(/_value$/, '');
+            const label = fieldLabelMap.get(key.toLowerCase()) || fieldLabelMap.get(normalized) || key;
+
+            rows.push({ key, label, value });
         }
 
-        return rows.sort((a, b) => a.key.localeCompare(b.key));
-    }, [formData]);
+        return rows.sort((a, b) => a.label.localeCompare(b.label));
+    }, [formData, fieldLabelMap]);
 
     if (!formData) return <div>No data selected</div>;
     if (!formDefinition || formDefinition.length === 0) {
@@ -368,12 +399,48 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                                 <tbody>
                                     {recordDataRows.map(row => (
                                         <tr key={row.key}>
-                                            <td>{row.key}</td>
+                                            <td>{row.label}</td>
                                             <td>{row.value}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
+                        )}
+                    </div>
+                </PivotItem>
+                <PivotItem headerText="Audit History" itemKey="auditHistory">
+                    <div className="ltr-record-data-tab">
+                        {auditLoading && <div>Loading audit history...</div>}
+                        {!auditLoading && (!auditHistory || auditHistory.length === 0) && <div>No audit history found.</div>}
+                        {!auditLoading && !!auditHistory && auditHistory.length > 0 && (
+                            <div className="ltr-audit-groups">
+                                {auditHistory.map(group => (
+                                    <div key={group.key} className="ltr-audit-group">
+                                        <div className="ltr-audit-group-header">
+                                            <strong>{group.createdOn ? new Date(group.createdOn).toLocaleString() : '--'}</strong>
+                                            <span>Changed By: {group.changedBy}</span>
+                                        </div>
+                                        <table className="ltr-record-data-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Operation</th>
+                                                    <th>Action</th>
+                                                    <th>Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {group.items.map(item => (
+                                                    <tr key={item.id}>
+                                                        <td>{item.operation || '--'}</td>
+                                                        <td>{item.action || '--'}</td>
+                                                        <td>{item.details || '--'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
+                            </div>
                         )}
                     </div>
                 </PivotItem>

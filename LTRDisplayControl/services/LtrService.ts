@@ -40,6 +40,22 @@ export interface IRelatedRelationship {
     childLookupAttribute: string;
 }
 
+export interface IAuditHistoryItem {
+    id: string;
+    createdOn?: string;
+    changedBy: string;
+    operation?: string;
+    action?: string;
+    details: string;
+}
+
+export interface IAuditHistoryGroup {
+    key: string;
+    createdOn?: string;
+    changedBy: string;
+    items: IAuditHistoryItem[];
+}
+
 const TECHNICAL_CHILD_ENTITIES = new Set([
     "activityparty",
     "asyncoperation",
@@ -923,6 +939,80 @@ export class LtrService {
                 parentId,
                 isArchive
             });
+            return [];
+        }
+    }
+
+    public async getRecordAuditHistory(recordId: string, maxRows: number = 200): Promise<IAuditHistoryGroup[]> {
+        try {
+            const id = String(recordId || '').replace(/[{}]/g, '').toLowerCase();
+            if (!id) {
+                return [];
+            }
+
+            const top = Math.min(Math.max(maxRows, 1), 5000);
+            const query =
+                `?$select=auditid,createdon,action,operation,attributemask,changedata,_userid_value` +
+                `&$filter=_objectid_value eq ${id}` +
+                `&$orderby=createdon desc`;
+
+            const result = await this._context.webAPI.retrieveMultipleRecords('audit', query, top);
+            const rows = Array.isArray(result?.entities) ? result.entities : [];
+
+            const mapped: IAuditHistoryItem[] = rows.map((row: any) => {
+                const changedBy =
+                    row?.['_userid_value@OData.Community.Display.V1.FormattedValue'] ||
+                    row?.['userid@OData.Community.Display.V1.FormattedValue'] ||
+                    row?._userid_value ||
+                    'Unknown';
+
+                const operation = row?.['operation@OData.Community.Display.V1.FormattedValue'] || row?.operation;
+                const action = row?.['action@OData.Community.Display.V1.FormattedValue'] || row?.action;
+                const details =
+                    (typeof row?.changedata === 'string' && row.changedata.trim().length > 0 ? row.changedata.trim() : '') ||
+                    (typeof row?.attributemask === 'string' && row.attributemask.trim().length > 0 ? row.attributemask.trim() : '') ||
+                    '--';
+
+                return {
+                    id: String(row?.auditid || `${row?.createdon || ''}|${changedBy}|${details}`),
+                    createdOn: row?.createdon,
+                    changedBy: String(changedBy),
+                    operation: operation !== undefined && operation !== null ? String(operation) : undefined,
+                    action: action !== undefined && action !== null ? String(action) : undefined,
+                    details
+                };
+            });
+
+            const groupedMap = new Map<string, IAuditHistoryGroup>();
+            mapped.forEach((item) => {
+                const key = `${item.createdOn || ''}|${item.changedBy}`;
+                const existing = groupedMap.get(key);
+                if (existing) {
+                    existing.items.push(item);
+                    return;
+                }
+
+                groupedMap.set(key, {
+                    key,
+                    createdOn: item.createdOn,
+                    changedBy: item.changedBy,
+                    items: [item]
+                });
+            });
+
+            const groups = Array.from(groupedMap.values());
+            groups.sort((a, b) => String(b.createdOn || '').localeCompare(String(a.createdOn || '')));
+
+            diag.info('Fetched audit history', {
+                entity: this._targetEntity,
+                recordId: id,
+                rowCount: mapped.length,
+                groupCount: groups.length
+            });
+
+            return groups;
+        } catch (error) {
+            diag.error('Error fetching audit history', error, { entity: this._targetEntity, recordId });
             return [];
         }
     }

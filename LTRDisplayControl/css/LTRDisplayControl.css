@@ -400,16 +400,21 @@
     background: #faf9f8;
 }
 
-.ltr-grid-json-link {
-    border: 0;
-    background: transparent;
-    color: #005a9e;
-    text-decoration: underline;
-    cursor: pointer;
-    padding: 0;
-    font-size: 12px;
+.ltr-audit-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.ltr-grid-json-link:hover {
-    color: #004578;
+.ltr-audit-group {
+    border: 1px solid #e1dfdd;
+    background: #fff;
+}
+
+.ltr-audit-group-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid #edebe9;
 }

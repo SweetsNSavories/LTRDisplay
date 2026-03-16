@@ -1,13 +1,12 @@
 import * as React from 'react';
 import { IInputs } from "../generated/ManifestTypes";
-import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship, ISearchableAttribute } from '../services/LtrService';
+import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship, IAuditHistoryGroup } from '../services/LtrService';
 import { XmlParserHelper, IGridColumn, IFormTab } from '../utils/XmlParser';
 import { DynamicGrid } from './DynamicGrid';
 import { DynamicForm } from './DynamicForm';
 import { ComboBox, IComboBoxOption } from '@fluentui/react/lib/ComboBox';
 import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
 import { Toggle } from '@fluentui/react/lib/Toggle';
-import { TextField } from '@fluentui/react/lib/TextField';
 import { PrimaryButton, DefaultButton } from '@fluentui/react/lib/Button';
 import { diag } from '../utils/Diagnostics';
 
@@ -23,12 +22,6 @@ interface IEntityOption {
     displayName?: string;
 }
 
-interface ISearchColumnOption {
-    logicalName: string;
-    displayName?: string;
-    attributeType: string;
-}
-
 interface IDetailContext {
     entity: string;
     record: any;
@@ -40,6 +33,8 @@ interface IDetailContext {
     relatedDefinitions: IRelatedRelationship[];
     relatedData: Record<string, any[]>;
     relatedLoading: Record<string, boolean>;
+    auditHistory?: IAuditHistoryGroup[];
+    auditLoading?: boolean;
 }
 
 interface IUserCache {
@@ -278,130 +273,185 @@ function getRecordFromCache(cache: IUserCache, entity: string, id?: string): Rec
     return cache.records[logical]?.[normalizedId];
 }
 
-function escapeXml(value: string): string {
-    return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
+function normalizeComparableValue(value: unknown): string {
+    if (value === null || value === undefined) {
+        return '';
+    }
+
+    if (typeof value === 'boolean') {
+        return value ? '1' : '0';
+    }
+
+    if (typeof value === 'number' || typeof value === 'bigint') {
+        return String(value).trim().toLowerCase();
+    }
+
+    if (typeof value === 'string') {
+        return value.replace(/[{}]/g, '').trim().toLowerCase();
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString().toLowerCase();
+    }
+
+    if (Array.isArray(value)) {
+        return value.map(v => normalizeComparableValue(v)).join(',');
+    }
+
+    if (typeof value === 'object') {
+        return JSON.stringify(value).toLowerCase();
+    }
+
+    if (typeof value === 'symbol') {
+        return String(value.description || '').trim().toLowerCase();
+    }
+
+    return '';
 }
 
-function splitSearchTokens(text?: string): string[] {
-    return (text || '')
-        .split(',')
-        .map(v => v.trim())
-        .filter(Boolean);
+function evaluateLikePattern(actual: string, pattern: string): boolean {
+    const escaped = pattern
+        .replace(/[-/\\^$+?.()|[\]{}]/g, '\\$&')
+        .replace(/%/g, '.*')
+        .replace(/_/g, '.');
+    const regex = new RegExp(`^${escaped}$`, 'i');
+    return regex.test(actual);
 }
 
-function isContainsSearchType(attributeType?: string): boolean {
-    const t = (attributeType || '').toLowerCase();
-    return (
-        t.includes('string') ||
-        t.includes('memo') ||
-        t.includes('entityname') ||
-        t.includes('virtual')
-    );
+function getRowValueForAttribute(row: any, attribute: string): unknown {
+    if (!row || !attribute) {
+        return undefined;
+    }
+
+    const formatted = row[`${attribute}@OData.Community.Display.V1.FormattedValue`];
+    if (formatted !== null && formatted !== undefined && String(formatted).length > 0) {
+        return formatted;
+    }
+
+    return row[attribute];
 }
 
-function normalizeTokenForType(token: string, attributeType?: string): string {
-    const t = (attributeType || '').toLowerCase();
-    const value = token.trim();
+function evaluateFetchCondition(row: any, conditionNode: Element): boolean {
+    const attribute = String(conditionNode.getAttribute('attribute') || '').trim();
+    const operator = String(conditionNode.getAttribute('operator') || 'eq').trim().toLowerCase();
+    const value = String(conditionNode.getAttribute('value') || '').trim();
 
-    if (!value) {
-        return value;
+    if (!attribute) {
+        return true;
     }
 
-    if (t.includes('uniqueidentifier') || t.includes('lookup') || t.includes('customer') || t.includes('owner')) {
-        return value.replace(/[{}]/g, '').toLowerCase();
+    const actualRaw = getRowValueForAttribute(row, attribute);
+    const actual = normalizeComparableValue(actualRaw);
+    const expected = normalizeComparableValue(value);
+
+    if (operator === 'null') {
+        return actualRaw === null || actualRaw === undefined || actual === '';
     }
 
-    if (t.includes('boolean')) {
-        const normalized = value.toLowerCase();
-        if (['true', '1', 'yes', 'y'].includes(normalized)) return '1';
-        if (['false', '0', 'no', 'n'].includes(normalized)) return '0';
+    if (operator === 'not-null') {
+        return actualRaw !== null && actualRaw !== undefined && actual !== '';
     }
 
-    return value;
+    if (operator === 'in' || operator === 'not-in') {
+        const values = Array.from(conditionNode.getElementsByTagName('value'))
+            .map((v: any) => normalizeComparableValue(v?.textContent || ''))
+            .filter(Boolean);
+        const contains = values.includes(actual);
+        return operator === 'in' ? contains : !contains;
+    }
+
+    if (actualRaw === null || actualRaw === undefined) {
+        return false;
+    }
+
+    if (operator === 'like') {
+        return evaluateLikePattern(actual, expected || value.toLowerCase());
+    }
+
+    if (operator === 'not-like') {
+        return !evaluateLikePattern(actual, expected || value.toLowerCase());
+    }
+
+    const actualNum = Number(actualRaw);
+    const expectedNum = Number(value);
+    const numericComparable = Number.isFinite(actualNum) && Number.isFinite(expectedNum);
+
+    if (operator === 'gt') {
+        return numericComparable ? actualNum > expectedNum : actual > expected;
+    }
+
+    if (operator === 'ge') {
+        return numericComparable ? actualNum >= expectedNum : actual >= expected;
+    }
+
+    if (operator === 'lt') {
+        return numericComparable ? actualNum < expectedNum : actual < expected;
+    }
+
+    if (operator === 'le') {
+        return numericComparable ? actualNum <= expectedNum : actual <= expected;
+    }
+
+    if (operator === 'ne') {
+        return actual !== expected;
+    }
+
+    return actual === expected;
 }
 
-function appendInitialFetchClause(fetchXml: string, column?: string, text?: string, attributeType?: string): string {
-    const attr = (column || '').trim();
-    const query = (text || '').trim();
-    const tokens = splitSearchTokens(query);
-
-    if (!attr || !query || tokens.length === 0) {
-        return fetchXml;
+function evaluateFetchFilterNode(row: any, filterNode: Element): boolean {
+    const type = String(filterNode.getAttribute('type') || 'and').toLowerCase();
+    const childElements = Array.from(filterNode.children || []);
+    if (childElements.length === 0) {
+        return true;
     }
 
-    const useContains = isContainsSearchType(attributeType);
-    let conditionXml = '';
-
-    if (tokens.length > 1) {
-        const values = tokens
-            .map(v => normalizeTokenForType(v, attributeType))
-            .filter(Boolean)
-            .map(v => `<value>${escapeXml(v)}</value>`)
-            .join('');
-        conditionXml = `<condition attribute="${escapeXml(attr)}" operator="in">${values}</condition>`;
-    } else {
-        const value = normalizeTokenForType(tokens[0], attributeType);
-        if (useContains) {
-            conditionXml = `<condition attribute="${escapeXml(attr)}" operator="like" value="%${escapeXml(value)}%" />`;
-        } else {
-            conditionXml = `<condition attribute="${escapeXml(attr)}" operator="eq" value="${escapeXml(value)}" />`;
+    const childResults = childElements.map((child) => {
+        const name = child.tagName.toLowerCase();
+        if (name === 'filter') {
+            return evaluateFetchFilterNode(row, child);
         }
-    }
-
-    const condition = `<filter type="and">${conditionXml}</filter>`;
-    const idx = fetchXml.lastIndexOf('</entity>');
-    if (idx < 0) {
-        return fetchXml;
-    }
-
-    return `${fetchXml.slice(0, idx)}${condition}${fetchXml.slice(idx)}`;
-}
-
-function applySearchClauseLocally(rows: any[], column?: string, text?: string, attributeType?: string): any[] {
-    const attr = (column || '').trim();
-    const tokens = splitSearchTokens(text);
-    if (!attr || tokens.length === 0) {
-        return rows;
-    }
-
-    const containsMode = isContainsSearchType(attributeType);
-    const normalizedTokens = tokens
-        .map(token => normalizeTokenForType(token, attributeType).toLowerCase())
-        .filter(Boolean);
-
-    if (normalizedTokens.length === 0) {
-        return rows;
-    }
-
-    const isInMode = normalizedTokens.length > 1;
-
-    return rows.filter((row) => {
-        const formatted = row?.[`${attr}@OData.Community.Display.V1.FormattedValue`];
-        const raw = formatted ?? row?.[attr];
-        if (raw === null || raw === undefined) {
-            return false;
+        if (name === 'condition') {
+            return evaluateFetchCondition(row, child);
         }
-
-        const normalizedRaw = normalizeTokenForType(String(raw), attributeType).toLowerCase();
-        if (!normalizedRaw) {
-            return false;
-        }
-
-        if (isInMode) {
-            return normalizedTokens.includes(normalizedRaw);
-        }
-
-        if (containsMode) {
-            return normalizedRaw.includes(normalizedTokens[0]);
-        }
-
-        return normalizedRaw === normalizedTokens[0];
+        return true;
     });
+
+    if (type === 'or') {
+        return childResults.some(Boolean);
+    }
+
+    return childResults.every(Boolean);
+}
+
+function applyViewFetchFilterLocally(rows: any[], fetchXml: string): any[] {
+    if (!fetchXml || !Array.isArray(rows) || rows.length === 0) {
+        return rows;
+    }
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(fetchXml, 'text/xml');
+        if (doc.getElementsByTagName('parsererror').length > 0) {
+            return rows;
+        }
+
+        const entityNode = doc.getElementsByTagName('entity')[0];
+        if (!entityNode) {
+            return rows;
+        }
+
+        const directFilters = Array.from(entityNode.children || []).filter(
+            (n) => n.tagName.toLowerCase() === 'filter'
+        );
+        if (directFilters.length === 0) {
+            return rows;
+        }
+
+        return rows.filter((row) => directFilters.every((filterNode) => evaluateFetchFilterNode(row, filterNode)));
+    } catch {
+        return rows;
+    }
 }
 
 const App: React.FC<IAppProps> = (props) => {
@@ -422,9 +472,6 @@ const App: React.FC<IAppProps> = (props) => {
     const [gridColumns, setGridColumns] = React.useState<IGridColumn[]>([]);
     const [columnFilters, setColumnFilters] = React.useState<Record<string, string>>({});
     const [definitions, setDefinitions] = React.useState<IFormTab[]>([]);
-    const [searchColumns, setSearchColumns] = React.useState<ISearchColumnOption[]>([]);
-    const [searchColumn, setSearchColumn] = React.useState<string>();
-    const [searchText, setSearchText] = React.useState<string>("");
     const [pageSize, setPageSize] = React.useState<number>(250);
     const [currentPage, setCurrentPage] = React.useState<number>(1);
 
@@ -545,44 +592,28 @@ const App: React.FC<IAppProps> = (props) => {
 
             const userId = normalizeGuid(context.userSettings.userId) || 'anonymous';
             const userCache = getBrowserCache(userId);
-            const selectedSearchColumn = searchColumns.find(c => c.logicalName === searchColumn);
-            const effectiveFetchXml = appendInitialFetchClause(view.fetchXml, searchColumn, searchText, selectedSearchColumn?.attributeType);
-            const normalizedSearchText = (searchText || '').trim().toLowerCase();
-            const hasSearchClause = !!(searchColumn && normalizedSearchText);
-            const clauseKey = hasSearchClause ? `${searchColumn}|${normalizedSearchText}` : '__nosearch__';
+            const effectiveFetchXml = view.fetchXml;
+            const clauseKey = '__nosearch__';
             const cacheKey = `${getViewCacheKey(selectedEntity, viewId, archiveMode)}|${clauseKey}`;
-            const cached = userCache.views[cacheKey];
 
             if (cacheOnly) {
-                if (cached) {
-                    setGridData(cached);
-                    diag.info("Grid data loaded from cache only", { cacheKey, count: cached.length });
-                } else {
-                    const viewKeyPrefix = `${getViewCacheKey(selectedEntity, viewId, archiveMode)}|`;
-                    const noSearchKey = `${viewKeyPrefix}__nosearch__`;
-                    const noSearchRows = userCache.views[noSearchKey];
-                    const candidateKeys = Object.keys(userCache.views).filter(k => k.startsWith(viewKeyPrefix));
-                    const fallbackKey = noSearchRows
-                        ? noSearchKey
-                        : (candidateKeys.length > 0 ? candidateKeys[candidateKeys.length - 1] : undefined);
-                    const fallbackRows = fallbackKey ? userCache.views[fallbackKey] : undefined;
+                const entityRecordRows = Object.values(userCache.records[(selectedEntity || '').toLowerCase()] || {});
+                const sourceRows = applyViewFetchFilterLocally(entityRecordRows, view.fetchXml);
 
-                    if (fallbackRows) {
-                        const locallyFiltered = hasSearchClause
-                            ? applySearchClauseLocally(fallbackRows, searchColumn, searchText, selectedSearchColumn?.attributeType)
-                            : fallbackRows;
-                        setGridData(locallyFiltered);
-                        diag.info("Grid data loaded from fallback cache key", {
-                            requestedCacheKey: cacheKey,
-                            fallbackKey,
-                            sourceCount: fallbackRows.length,
-                            count: locallyFiltered.length,
-                            hasSearchClause
-                        });
-                    } else {
-                        setGridData([]);
-                        diag.info("No cached data found for selected view", { cacheKey, viewKeyPrefix });
-                    }
+                if (sourceRows.length > 0) {
+                    setGridData(sourceRows);
+                    diag.info("Grid data loaded from cache only", {
+                        cacheKey,
+                        entityRecordCacheCount: entityRecordRows.length,
+                        sourceCount: sourceRows.length,
+                        count: sourceRows.length
+                    });
+                } else {
+                    setGridData([]);
+                    diag.info("No cached data found for selected entity/view filter", {
+                        cacheKey,
+                        entityRecordCacheCount: entityRecordRows.length
+                    });
                 }
                 return;
             }
@@ -596,8 +627,15 @@ const App: React.FC<IAppProps> = (props) => {
             upsertRecordsInCache(userCache, selectedEntity, data);
             persistCurrentUserCache(userCache);
             diag.info("View data fetched and cached", { cacheKey, count: data.length });
-            setGridData(userCache.views[cacheKey] || []);
-            diag.info("Grid data loaded", { count: data.length });
+
+            const entityRecordRows = Object.values(userCache.records[(selectedEntity || '').toLowerCase()] || {});
+            const sourceRows = applyViewFetchFilterLocally(entityRecordRows, view.fetchXml);
+            setGridData(sourceRows);
+            diag.info("Grid data loaded", {
+                fetchedCount: data.length,
+                entityRecordCacheCount: entityRecordRows.length,
+                count: sourceRows.length
+            });
         } catch (err) {
             diag.error("View change failed", err, { viewId, isArchive, entity: selectedEntity });
         } finally {
@@ -616,21 +654,9 @@ const App: React.FC<IAppProps> = (props) => {
                 const service = new LtrService(context, selectedEntity);
                 const vs = await service.getSystemViews();
                 const fs = await loadFormsForEntity(selectedEntity);
-                const searchable = await service.getSearchableAttributes(selectedEntity);
 
                 setViews(vs);
                 setDetailsForms(fs);
-                const searchOptions: ISearchColumnOption[] = searchable.map((a: ISearchableAttribute) => ({
-                    logicalName: a.logicalName,
-                    displayName: a.displayName,
-                    attributeType: a.attributeType
-                }));
-                setSearchColumns(searchOptions);
-                setSearchColumn(prev => (
-                    prev && searchOptions.some(c => c.logicalName === prev)
-                        ? prev
-                        : searchOptions[0]?.logicalName
-                ));
 
                 if (vs.length > 0) {
                     prepareView(vs[0].id, vs);
@@ -714,7 +740,9 @@ const App: React.FC<IAppProps> = (props) => {
                 definitions: rootDefinitions,
                 relatedDefinitions,
                 relatedData: {},
-                relatedLoading: {}
+                relatedLoading: {},
+                auditHistory: undefined,
+                auditLoading: false
             });
             setViewMode('FORM');
         } catch (err) {
@@ -831,7 +859,9 @@ const App: React.FC<IAppProps> = (props) => {
             definitions: parsed,
             relatedDefinitions,
             relatedData: {},
-            relatedLoading: {}
+            relatedLoading: {},
+            auditHistory: undefined,
+            auditLoading: false
         };
 
         setDetailStack(prev => [...prev, detailContext]);
@@ -860,15 +890,49 @@ const App: React.FC<IAppProps> = (props) => {
         const next = match ? match.logicalName : raw;
 
         setSelectedEntity(next);
-        setSearchText("");
-        setSearchColumn(undefined);
-        setSearchColumns([]);
         setColumnFilters({});
         setCurrentPage(1);
         setDetailContext(undefined);
         setDetailStack([]);
         setViewMode('GRID');
     };
+
+    React.useEffect(() => {
+        const loadAudit = async () => {
+            if (!detailContext?.recordId || !detailContext.entity) {
+                return;
+            }
+
+            if (detailContext.auditLoading || detailContext.auditHistory !== undefined) {
+                return;
+            }
+
+            const targetEntity = detailContext.entity;
+            const targetRecordId = detailContext.recordId;
+
+            setDetailContext(prev => prev ? { ...prev, auditLoading: true } : prev);
+
+            try {
+                const service = new LtrService(context, targetEntity);
+                const auditHistory = await service.getRecordAuditHistory(targetRecordId);
+                setDetailContext(prev => {
+                    if (!prev || prev?.entity !== targetEntity || prev?.recordId !== targetRecordId) {
+                        return prev;
+                    }
+                    return { ...prev, auditHistory, auditLoading: false };
+                });
+            } catch {
+                setDetailContext(prev => {
+                    if (!prev || prev?.entity !== targetEntity || prev?.recordId !== targetRecordId) {
+                        return prev;
+                    }
+                    return { ...prev, auditHistory: [], auditLoading: false };
+                });
+            }
+        };
+
+        loadAudit();
+    }, [context, detailContext?.entity, detailContext?.recordId, detailContext?.auditHistory, detailContext?.auditLoading]);
 
     const onToggleArchive = (_ev: any, checked?: boolean) => {
         setArchiveMode(!!checked);
@@ -974,28 +1038,6 @@ const App: React.FC<IAppProps> = (props) => {
                     styles={{ root: { width: 300 } }}
                 />
 
-                <ComboBox
-                    label="Search Column"
-                    selectedKey={searchColumn}
-                    options={searchColumns.map(c => ({
-                        key: c.logicalName,
-                        text: c.displayName ? `${c.displayName} (${c.logicalName})` : c.logicalName
-                    }))}
-                    onChange={(_e, opt) => setSearchColumn(opt?.key as string)}
-                    autoComplete="on"
-                    useComboBoxAsMenuWidth
-                    disabled={loading || searchColumns.length === 0 || viewMode !== 'GRID'}
-                    styles={{ root: { width: 220 } }}
-                />
-
-                <TextField
-                    label="Search"
-                    value={searchText}
-                    onChange={(_e, value) => setSearchText(value || "")}
-                    disabled={loading || viewMode !== 'GRID'}
-                    styles={{ root: { width: 220 } }}
-                />
-
                 <PrimaryButton
                     text="Apply Fetch Clause"
                     onClick={() => {
@@ -1088,6 +1130,8 @@ const App: React.FC<IAppProps> = (props) => {
                         formOptions={detailContext.forms.map(f => ({ key: f.id, text: f.name }))}
                         onFormChange={handleDetailFormChange}
                         selectedRecordId={detailContext.recordId}
+                        auditHistory={detailContext.auditHistory}
+                        auditLoading={detailContext.auditLoading}
                         relatedDefinitions={detailContext.relatedDefinitions}
                         relatedData={detailContext.relatedData}
                         relatedLoading={detailContext.relatedLoading}
