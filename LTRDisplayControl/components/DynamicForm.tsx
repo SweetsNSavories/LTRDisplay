@@ -2,8 +2,8 @@ import * as React from 'react';
 import { IFormTab } from '../utils/XmlParser';
 import { Label } from '@fluentui/react/lib/Label';
 import { Pivot, PivotItem } from '@fluentui/react/lib/Pivot';
-import { Dropdown } from '@fluentui/react/lib/Dropdown';
 import { DefaultButton } from '@fluentui/react/lib/Button';
+import { TextField } from '@fluentui/react/lib/TextField';
 import { IRelatedRelationship } from '../services/LtrService';
 
 interface IDynamicFormProps {
@@ -12,6 +12,7 @@ interface IDynamicFormProps {
     onBack: () => void;
     recordTitle: string;
     selectedFormId?: string;
+    selectedFormName?: string;
     formOptions: { key: string; text: string }[];
     onFormChange: (formId: string) => void;
     selectedRecordId?: string;
@@ -109,8 +110,8 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
         formData,
         formDefinition,
         onBack,
-        recordTitle,
         selectedFormId,
+        selectedFormName,
         formOptions,
         onFormChange,
         selectedRecordId,
@@ -122,31 +123,127 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
     } = props;
 
     const [selectedRelatedKey, setSelectedRelatedKey] = React.useState<string>();
+    const [relatedSearchText, setRelatedSearchText] = React.useState<string>('');
+
+    const filteredRelatedDefinitions = React.useMemo(() => {
+        const query = relatedSearchText.trim().toLowerCase();
+        if (!query) {
+            return relatedDefinitions;
+        }
+
+        return relatedDefinitions.filter(r =>
+            r.childEntity.toLowerCase().includes(query) ||
+            r.schemaName.toLowerCase().includes(query)
+        );
+    }, [relatedDefinitions, relatedSearchText]);
 
     React.useEffect(() => {
-        if (relatedDefinitions.length === 0) {
+        if (filteredRelatedDefinitions.length === 0) {
             setSelectedRelatedKey(undefined);
             return;
         }
 
-        if (!selectedRelatedKey || !relatedDefinitions.some(r => r.key === selectedRelatedKey)) {
-            setSelectedRelatedKey(relatedDefinitions[0].key);
+        if (!selectedRelatedKey || !filteredRelatedDefinitions.some(r => r.key === selectedRelatedKey)) {
+            setSelectedRelatedKey(filteredRelatedDefinitions[0].key);
         }
-    }, [relatedDefinitions, selectedRelatedKey]);
+    }, [filteredRelatedDefinitions, selectedRelatedKey]);
 
     const selectedRelationship = React.useMemo(
-        () => relatedDefinitions.find(r => r.key === selectedRelatedKey),
-        [relatedDefinitions, selectedRelatedKey]
+        () => filteredRelatedDefinitions.find(r => r.key === selectedRelatedKey),
+        [filteredRelatedDefinitions, selectedRelatedKey]
     );
 
     const selectedRows = selectedRelationship ? (relatedData[selectedRelationship.key] || []) : [];
     const selectedColumns = getRelationshipColumns(selectedRows);
 
-    const ownerDisplay =
-        formData?.["ownerid@OData.Community.Display.V1.FormattedValue"] ||
-        formData?.ownerid?.name ||
-        formData?.ownerid ||
-        "--";
+    const selectedFormOption = React.useMemo(() => {
+        if (formOptions.length === 0) {
+            return undefined;
+        }
+
+        if (selectedFormId) {
+            const selectedLower = String(selectedFormId).toLowerCase();
+            const exact = formOptions.find(f => String(f.key).toLowerCase() === selectedLower);
+            if (exact) {
+                return exact;
+            }
+        }
+
+        return formOptions[0];
+    }, [formOptions, selectedFormId]);
+
+    const selectedFormLabel = selectedFormOption?.text || selectedFormName || (formOptions.length > 0 ? formOptions[0].text : 'Form');
+    const formMenuItems = formOptions.map(f => ({
+        key: String(f.key),
+        text: f.text,
+        canCheck: true,
+        checked: String(f.key).toLowerCase() === String(selectedFormOption?.key || '').toLowerCase(),
+        onClick: () => onFormChange(String(f.key))
+    }));
+
+    const headerFields = React.useMemo(() => {
+        const result: { key: string; label: string; value: string }[] = [];
+        const seen = new Set<string>();
+
+        for (const tab of formDefinition || []) {
+            if (!tab.visible) continue;
+            const sections = tab.columns?.flatMap(c => c.sections || []) || tab.sections || [];
+
+            for (const section of sections) {
+                if (!section.visible) continue;
+
+                for (const row of section.rows || []) {
+                    for (const cell of row.cells || []) {
+                        if (!cell.visible || !cell.fieldName) continue;
+                        const key = cell.fieldName.toLowerCase();
+                        if (seen.has(key)) continue;
+
+                        const value = getFieldDisplayValue(formData, cell.fieldName);
+                        seen.add(key);
+
+                        result.push({
+                            key,
+                            label: cell.label || cell.fieldName,
+                            value
+                        });
+
+                        if (result.length >= 4) {
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+
+        return result;
+    }, [formDefinition, formData]);
+
+    const recordDataRows = React.useMemo(() => {
+        if (!formData || typeof formData !== 'object') {
+            return [] as { key: string; value: string }[];
+        }
+
+        const ignoredPrefixes = ['odata.'];
+        const rows: { key: string; value: string }[] = [];
+
+        for (const key of Object.keys(formData)) {
+            if (!key) continue;
+            if (key.includes('@')) continue;
+            if (ignoredPrefixes.some(prefix => key.toLowerCase().startsWith(prefix))) continue;
+
+            const raw = formData[key];
+            if (raw === null || raw === undefined || raw === '') continue;
+
+            const formatted = formData[`${key}@OData.Community.Display.V1.FormattedValue`];
+            const value = formatted !== null && formatted !== undefined && String(formatted).length > 0
+                ? String(formatted)
+                : String(raw);
+
+            rows.push({ key, value });
+        }
+
+        return rows.sort((a, b) => a.key.localeCompare(b.key));
+    }, [formData]);
 
     if (!formData) return <div>No data selected</div>;
     if (!formDefinition || formDefinition.length === 0) {
@@ -157,17 +254,28 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                         &larr;
                     </button>
                     <div className="ltr-form-title-row">
-                        <div className="ltr-form-record-title">{recordTitle}</div>
-                        <span className="ltr-form-title-sep">:</span>
-                        <Dropdown
-                            selectedKey={selectedFormId}
-                            options={formOptions}
-                            onChange={(_e, opt) => opt && onFormChange(opt.key as string)}
-                            styles={{ root: { width: 340, marginBottom: 0 } }}
+                        <span className="ltr-form-selected-form">{selectedFormLabel}</span>
+                        <DefaultButton
+                            className="ltr-form-switch-button"
+                            text=""
+                            menuIconProps={{ iconName: 'ChevronDown' }}
+                            title="Select form"
+                            ariaLabel="Select form"
+                            disabled={formMenuItems.length === 0}
+                            menuProps={{ items: formMenuItems }}
                         />
                     </div>
-                    <div className="ltr-form-owner">Owner: {ownerDisplay}</div>
                 </div>
+                {headerFields.length > 0 && (
+                    <div className="ltr-form-header-fields">
+                        {headerFields.map(field => (
+                            <div key={field.key} className="ltr-form-header-field">
+                                <span className="ltr-form-header-field-label">{field.label}:</span>
+                                <span className="ltr-form-header-field-value">{field.value}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div>No main form metadata available for the selected entity.</div>
             </div>
         );
@@ -180,17 +288,28 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                     &larr;
                 </button>
                 <div className="ltr-form-title-row">
-                    <div className="ltr-form-record-title">{recordTitle}</div>
-                    <span className="ltr-form-title-sep">:</span>
-                    <Dropdown
-                        selectedKey={selectedFormId}
-                        options={formOptions}
-                        onChange={(_e, opt) => opt && onFormChange(opt.key as string)}
-                        styles={{ root: { width: 340, marginBottom: 0 } }}
+                    <span className="ltr-form-selected-form">{selectedFormLabel}</span>
+                    <DefaultButton
+                        className="ltr-form-switch-button"
+                        text=""
+                        menuIconProps={{ iconName: 'ChevronDown' }}
+                        title="Select form"
+                        ariaLabel="Select form"
+                        disabled={formMenuItems.length === 0}
+                        menuProps={{ items: formMenuItems }}
                     />
                 </div>
-                <div className="ltr-form-owner">Owner: {ownerDisplay}</div>
             </div>
+            {headerFields.length > 0 && (
+                <div className="ltr-form-header-fields">
+                    {headerFields.map(field => (
+                        <div key={field.key} className="ltr-form-header-field">
+                            <span className="ltr-form-header-field-label">{field.label}:</span>
+                            <span className="ltr-form-header-field-value">{field.value}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             <Pivot>
                 {formDefinition.map(tab => (
@@ -235,10 +354,40 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                         </PivotItem>
                     )
                 ))}
+                <PivotItem headerText="Record Data" itemKey="recordData">
+                    <div className="ltr-record-data-tab">
+                        {recordDataRows.length === 0 && <div>No non-null fields found in the current record payload.</div>}
+                        {recordDataRows.length > 0 && (
+                            <table className="ltr-record-data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field</th>
+                                        <th>Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {recordDataRows.map(row => (
+                                        <tr key={row.key}>
+                                            <td>{row.key}</td>
+                                            <td>{row.value}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </PivotItem>
                 <PivotItem headerText="Related" itemKey="related">
                     <div className="ltr-related-tab">
                         <div className="ltr-related-list">
-                            {relatedDefinitions.map(relationship => (
+                            <div className="ltr-related-search-wrap">
+                                <TextField
+                                    placeholder="Search related tables"
+                                    value={relatedSearchText}
+                                    onChange={(_e, value) => setRelatedSearchText(value || '')}
+                                />
+                            </div>
+                            {filteredRelatedDefinitions.map(relationship => (
                                 <button
                                     key={relationship.key}
                                     className={`ltr-related-item ${selectedRelatedKey === relationship.key ? 'active' : ''}`}
@@ -248,6 +397,7 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                                 </button>
                             ))}
                             {relatedDefinitions.length === 0 && <div style={{ padding: 12 }}>No one-to-many relationships found.</div>}
+                            {relatedDefinitions.length > 0 && filteredRelatedDefinitions.length === 0 && <div style={{ padding: 12 }}>No related tables match search.</div>}
                         </div>
 
                         <div className="ltr-related-grid-wrap">

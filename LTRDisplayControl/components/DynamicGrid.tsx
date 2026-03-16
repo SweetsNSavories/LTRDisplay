@@ -58,6 +58,54 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
         }
     });
 
+    const openJsonForRow = React.useCallback((item: any) => {
+        try {
+            const filtered: Record<string, any> = {};
+            Object.keys(item || {}).forEach((key) => {
+                if (!key || key.includes('@') || key.toLowerCase().startsWith('odata.')) {
+                    return;
+                }
+
+                const value = item[key];
+                if (value === null || value === undefined || value === '') {
+                    return;
+                }
+
+                filtered[key] = value;
+            });
+
+            const pretty = JSON.stringify(filtered, null, 2);
+            const blob = new Blob([pretty], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank', 'noopener,noreferrer');
+            window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+        } catch (error) {
+            diag.error('Failed to open row JSON', error);
+        }
+    }, []);
+
+    const jsonColumn: IColumn = {
+        key: '__open_json__',
+        name: 'Record',
+        fieldName: '__open_json__',
+        minWidth: 110,
+        maxWidth: 130,
+        isResizable: false,
+        onRender: (item?: any) => (
+            <button
+                type="button"
+                className="ltr-grid-json-link"
+                onClick={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    openJsonForRow(item);
+                }}
+            >
+                Open JSON
+            </button>
+        )
+    };
+
     const gridColumns: IColumn[] = columns.map(c => ({
         key: c.name,
         name: c.displayName || c.name,
@@ -115,7 +163,7 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
         <div className="ltr-grid-container">
             <DetailsList
                 items={data}
-                columns={gridColumns}
+                columns={[jsonColumn, ...gridColumns]}
                 selectionMode={SelectionMode.single}
                 selection={_selection}
                 layoutMode={DetailsListLayoutMode.justified}

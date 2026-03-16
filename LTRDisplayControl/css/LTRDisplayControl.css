@@ -123,9 +123,14 @@
 
 .ltr-back-button {
     cursor: pointer;
-    padding: 5px 10px;
+    width: 44px;
+    height: 34px;
+    padding: 0;
     line-height: 1;
     align-self: center;
+    border: 1px solid #a19f9d;
+    background: #f3f2f1;
+    color: #323130;
 }
 
 .ltr-form-title-row {
@@ -147,6 +152,79 @@
 .ltr-form-title-sep {
     color: #605e5c;
     font-weight: 600;
+}
+
+.ltr-form-switch-button {
+    min-width: 44px;
+    width: 44px;
+    height: 34px;
+    padding: 0;
+    align-self: center;
+}
+
+.ltr-form-switch-button,
+.ltr-form-switch-button.ms-Button {
+    background: #f3f2f1;
+    border: 1px solid #c8c6c4;
+    color: #605e5c;
+}
+
+.ltr-form-switch-button:hover,
+.ltr-form-switch-button.ms-Button:hover {
+    background: #edebe9;
+    border-color: #a19f9d;
+}
+
+.ltr-form-switch-button .ms-Button-label {
+    display: none;
+}
+
+.ltr-form-switch-button .ms-Button-menuIcon {
+    margin: 0;
+}
+
+.ltr-form-switch-button .ms-Button-flexContainer {
+    height: 100%;
+    justify-content: center;
+}
+
+.ltr-form-switch-button .ms-Button-menuIcon i {
+    color: #605e5c;
+    font-size: 12px;
+}
+
+.ltr-form-selected-form {
+    font-size: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ltr-form-header-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 8px;
+    border: 1px solid #e1dfdd;
+    background: #fff;
+    padding: 14px 16px;
+}
+
+.ltr-form-header-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.ltr-form-header-field-label {
+    font-weight: 600;
+    color: #323130;
+}
+
+.ltr-form-header-field-value {
+    color: #323130;
 }
 
 .ltr-form-owner {
@@ -243,6 +321,15 @@
     overflow: auto;
 }
 
+.ltr-related-search-wrap {
+    padding: 8px;
+    border-bottom: 1px solid #edebe9;
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 1;
+}
+
 .ltr-related-item {
     width: 100%;
     text-align: left;
@@ -289,4 +376,40 @@
 
 .ltr-related-grid-row:hover {
     background: #f3f2f1;
+}
+
+.ltr-record-data-tab {
+    margin-top: 12px;
+}
+
+.ltr-record-data-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.ltr-record-data-table th,
+.ltr-record-data-table td {
+    border-bottom: 1px solid #edebe9;
+    text-align: left;
+    padding: 8px;
+    vertical-align: top;
+}
+
+.ltr-record-data-table th {
+    font-weight: 600;
+    background: #faf9f8;
+}
+
+.ltr-grid-json-link {
+    border: 0;
+    background: transparent;
+    color: #005a9e;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    font-size: 12px;
+}
+
+.ltr-grid-json-link:hover {
+    color: #004578;
 }

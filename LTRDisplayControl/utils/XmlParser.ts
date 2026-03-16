@@ -156,14 +156,24 @@ export class XmlParserHelper {
         if (!cellsCtx) return [];
         const cellsArray = Array.isArray(cellsCtx) ? cellsCtx : [cellsCtx];
 
-        return cellsArray.map((c: any) => ({
-            id: c["@_id"],
-            controlId: c.control?.["@_id"],
-            fieldName: c.control?.["@_datafieldname"],
-            label: c.labels?.label?.["@_description"] || c.control?.["@_datafieldname"],
-            visible: c["@_visible"] !== "false",
-            rowSpan: parseInt(c["@_rowspan"] || "1"),
-            colSpan: parseInt(c["@_colspan"] || "1")
-        })).filter(c => c.fieldName); // Only keep bound fields for now
+        return cellsArray
+            .map((c: any) => {
+                const controls = Array.isArray(c.control) ? c.control : (c.control ? [c.control] : []);
+                const boundControl = controls.find((ctrl: any) => !!ctrl?.["@_datafieldname"]);
+
+                const labels = c.labels?.label;
+                const labelNode = Array.isArray(labels) ? labels[0] : labels;
+
+                return {
+                    id: c["@_id"],
+                    controlId: boundControl?.["@_id"],
+                    fieldName: boundControl?.["@_datafieldname"],
+                    label: labelNode?.["@_description"] || boundControl?.["@_datafieldname"],
+                    visible: c["@_visible"] !== "false",
+                    rowSpan: parseInt(c["@_rowspan"] || "1", 10),
+                    colSpan: parseInt(c["@_colspan"] || "1", 10)
+                };
+            })
+            .filter(c => c.fieldName);
     }
 }

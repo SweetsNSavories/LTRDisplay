@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { IInputs } from "../generated/ManifestTypes";
-import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship } from '../services/LtrService';
+import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship, ISearchableAttribute } from '../services/LtrService';
 import { XmlParserHelper, IGridColumn, IFormTab } from '../utils/XmlParser';
 import { DynamicGrid } from './DynamicGrid';
 import { DynamicForm } from './DynamicForm';
@@ -23,12 +23,19 @@ interface IEntityOption {
     displayName?: string;
 }
 
+interface ISearchColumnOption {
+    logicalName: string;
+    displayName?: string;
+    attributeType: string;
+}
+
 interface IDetailContext {
     entity: string;
     record: any;
     recordId?: string;
     forms: IFormDefinition[];
     selectedFormId?: string;
+    selectedFormName?: string;
     definitions: IFormTab[];
     relatedDefinitions: IRelatedRelationship[];
     relatedData: Record<string, any[]>;
@@ -40,6 +47,7 @@ interface IUserCache {
     related: Record<string, any[]>;
     forms: Record<string, IFormDefinition[]>;
     relationships: Record<string, IRelatedRelationship[]>;
+    records: Record<string, Record<string, any>>;
 }
 
 interface ILtrBrowserCache {
@@ -48,12 +56,63 @@ interface ILtrBrowserCache {
 
 const GUID_REGEX = /^\{?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\}?$/i;
 
+function getUserPersistentCacheKey(userId: string): string {
+    return `__ltrDisplayCache.user.${userId}`;
+}
+
+function readUserCacheFromStorage(userId: string): IUserCache | undefined {
+    try {
+        const key = getUserPersistentCacheKey(userId);
+        const raw = window.localStorage.getItem(key) || window.sessionStorage.getItem(key);
+        if (!raw) {
+            return undefined;
+        }
+
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return undefined;
+        }
+
+        return {
+            views: parsed.views || {},
+            related: parsed.related || {},
+            forms: parsed.forms || {},
+            relationships: parsed.relationships || {},
+            records: parsed.records || {}
+        } as IUserCache;
+    } catch {
+        return undefined;
+    }
+}
+
+function writeUserCacheToStorage(userId: string, cache: IUserCache): void {
+    const serialized = JSON.stringify(cache);
+    const key = getUserPersistentCacheKey(userId);
+
+    try {
+        window.localStorage.setItem(key, serialized);
+        return;
+    } catch {
+        // fall through
+    }
+
+    try {
+        window.sessionStorage.setItem(key, serialized);
+    } catch {
+        // Ignore storage quota/security failures.
+    }
+}
+
 function getBrowserCache(userId: string): IUserCache {
     const key = '__ltrDisplayCache';
     const globalObj = window as any;
     const root: ILtrBrowserCache = globalObj[key] || { byUser: {} };
     if (!root.byUser[userId]) {
-        root.byUser[userId] = { views: {}, related: {}, forms: {}, relationships: {} };
+        const restored = readUserCacheFromStorage(userId);
+        root.byUser[userId] = restored || { views: {}, related: {}, forms: {}, relationships: {}, records: {} };
+    }
+    if (!root.byUser[userId].records) {
+        root.byUser[userId].records = {};
     }
     globalObj[key] = root;
     return root.byUser[userId];
@@ -68,7 +127,7 @@ function getRelatedCacheKey(entity: string, recordId: string, relationshipKey: s
 }
 
 function getFormsCacheKey(entity: string): string {
-    return entity.toLowerCase();
+    return `main-only-v2|${entity.toLowerCase()}`;
 }
 
 function getRelationshipsCacheKey(entity: string): string {
@@ -104,6 +163,48 @@ function resolveRecordId(record: any, entity: string): string | undefined {
 
     const match = candidates.find(v => GUID_REGEX.test(v));
     return normalizeGuid(match);
+}
+
+function getRecordIdCandidates(record: any, entity: string): string[] {
+    if (!record || typeof record !== 'object') {
+        return [];
+    }
+
+    const primaryIdKey = `${entity}id`;
+    const rawCandidates: string[] = [];
+
+    if (typeof record[primaryIdKey] === 'string') {
+        rawCandidates.push(record[primaryIdKey]);
+    }
+
+    if (typeof record.id === 'string') {
+        rawCandidates.push(record.id);
+    }
+
+    Object.keys(record).forEach((k) => {
+        const value = record[k];
+        if (typeof value === 'string' && (k.toLowerCase().endsWith('id') || /^_.*_value$/i.test(k))) {
+            rawCandidates.push(value);
+        }
+    });
+
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+    for (const candidate of rawCandidates) {
+        if (!GUID_REGEX.test(candidate)) {
+            continue;
+        }
+
+        const id = normalizeGuid(candidate);
+        if (!id || seen.has(id)) {
+            continue;
+        }
+
+        seen.add(id);
+        normalized.push(id);
+    }
+
+    return normalized;
 }
 
 function getLastUsedFormKey(entity: string): string {
@@ -146,6 +247,37 @@ function getRecordTitle(record: any, entity: string): string {
     return 'Record';
 }
 
+function upsertRecordsInCache(cache: IUserCache, entity: string, rows: any[]): void {
+    const logical = (entity || '').toLowerCase();
+    if (!logical || !Array.isArray(rows) || rows.length === 0) {
+        return;
+    }
+
+    if (!cache.records[logical]) {
+        cache.records[logical] = {};
+    }
+
+    rows.forEach((row) => {
+        const id = resolveRecordId(row, logical);
+        if (!id) {
+            return;
+        }
+
+        const existing = cache.records[logical][id] || {};
+        cache.records[logical][id] = { ...existing, ...row };
+    });
+}
+
+function getRecordFromCache(cache: IUserCache, entity: string, id?: string): Record<string, unknown> | undefined {
+    const logical = (entity || '').toLowerCase();
+    const normalizedId = normalizeGuid(id);
+    if (!logical || !normalizedId) {
+        return undefined;
+    }
+
+    return cache.records[logical]?.[normalizedId];
+}
+
 function escapeXml(value: string): string {
     return value
         .replace(/&/g, '&amp;')
@@ -155,21 +287,121 @@ function escapeXml(value: string): string {
         .replace(/'/g, '&apos;');
 }
 
-function appendInitialFetchClause(fetchXml: string, column?: string, text?: string): string {
+function splitSearchTokens(text?: string): string[] {
+    return (text || '')
+        .split(',')
+        .map(v => v.trim())
+        .filter(Boolean);
+}
+
+function isContainsSearchType(attributeType?: string): boolean {
+    const t = (attributeType || '').toLowerCase();
+    return (
+        t.includes('string') ||
+        t.includes('memo') ||
+        t.includes('entityname') ||
+        t.includes('virtual')
+    );
+}
+
+function normalizeTokenForType(token: string, attributeType?: string): string {
+    const t = (attributeType || '').toLowerCase();
+    const value = token.trim();
+
+    if (!value) {
+        return value;
+    }
+
+    if (t.includes('uniqueidentifier') || t.includes('lookup') || t.includes('customer') || t.includes('owner')) {
+        return value.replace(/[{}]/g, '').toLowerCase();
+    }
+
+    if (t.includes('boolean')) {
+        const normalized = value.toLowerCase();
+        if (['true', '1', 'yes', 'y'].includes(normalized)) return '1';
+        if (['false', '0', 'no', 'n'].includes(normalized)) return '0';
+    }
+
+    return value;
+}
+
+function appendInitialFetchClause(fetchXml: string, column?: string, text?: string, attributeType?: string): string {
     const attr = (column || '').trim();
     const query = (text || '').trim();
+    const tokens = splitSearchTokens(query);
 
-    if (!attr || !query) {
+    if (!attr || !query || tokens.length === 0) {
         return fetchXml;
     }
 
-    const condition = `<filter type="and"><condition attribute="${escapeXml(attr)}" operator="like" value="%${escapeXml(query)}%" /></filter>`;
+    const useContains = isContainsSearchType(attributeType);
+    let conditionXml = '';
+
+    if (tokens.length > 1) {
+        const values = tokens
+            .map(v => normalizeTokenForType(v, attributeType))
+            .filter(Boolean)
+            .map(v => `<value>${escapeXml(v)}</value>`)
+            .join('');
+        conditionXml = `<condition attribute="${escapeXml(attr)}" operator="in">${values}</condition>`;
+    } else {
+        const value = normalizeTokenForType(tokens[0], attributeType);
+        if (useContains) {
+            conditionXml = `<condition attribute="${escapeXml(attr)}" operator="like" value="%${escapeXml(value)}%" />`;
+        } else {
+            conditionXml = `<condition attribute="${escapeXml(attr)}" operator="eq" value="${escapeXml(value)}" />`;
+        }
+    }
+
+    const condition = `<filter type="and">${conditionXml}</filter>`;
     const idx = fetchXml.lastIndexOf('</entity>');
     if (idx < 0) {
         return fetchXml;
     }
 
     return `${fetchXml.slice(0, idx)}${condition}${fetchXml.slice(idx)}`;
+}
+
+function applySearchClauseLocally(rows: any[], column?: string, text?: string, attributeType?: string): any[] {
+    const attr = (column || '').trim();
+    const tokens = splitSearchTokens(text);
+    if (!attr || tokens.length === 0) {
+        return rows;
+    }
+
+    const containsMode = isContainsSearchType(attributeType);
+    const normalizedTokens = tokens
+        .map(token => normalizeTokenForType(token, attributeType).toLowerCase())
+        .filter(Boolean);
+
+    if (normalizedTokens.length === 0) {
+        return rows;
+    }
+
+    const isInMode = normalizedTokens.length > 1;
+
+    return rows.filter((row) => {
+        const formatted = row?.[`${attr}@OData.Community.Display.V1.FormattedValue`];
+        const raw = formatted ?? row?.[attr];
+        if (raw === null || raw === undefined) {
+            return false;
+        }
+
+        const normalizedRaw = normalizeTokenForType(String(raw), attributeType).toLowerCase();
+        if (!normalizedRaw) {
+            return false;
+        }
+
+        if (isInMode) {
+            return normalizedTokens.includes(normalizedRaw);
+        }
+
+        if (containsMode) {
+            return normalizedRaw.includes(normalizedTokens[0]);
+        }
+
+        return normalizedRaw === normalizedTokens[0];
+    });
 }
 
 const App: React.FC<IAppProps> = (props) => {
@@ -190,6 +422,7 @@ const App: React.FC<IAppProps> = (props) => {
     const [gridColumns, setGridColumns] = React.useState<IGridColumn[]>([]);
     const [columnFilters, setColumnFilters] = React.useState<Record<string, string>>({});
     const [definitions, setDefinitions] = React.useState<IFormTab[]>([]);
+    const [searchColumns, setSearchColumns] = React.useState<ISearchColumnOption[]>([]);
     const [searchColumn, setSearchColumn] = React.useState<string>();
     const [searchText, setSearchText] = React.useState<string>("");
     const [pageSize, setPageSize] = React.useState<number>(250);
@@ -204,6 +437,11 @@ const App: React.FC<IAppProps> = (props) => {
         return getBrowserCache(userId);
     }, [context.userSettings.userId]);
 
+    const persistCurrentUserCache = React.useCallback((cache: IUserCache) => {
+        const userId = normalizeGuid(context.userSettings.userId) || 'anonymous';
+        writeUserCacheToStorage(userId, cache);
+    }, [context.userSettings.userId]);
+
     const loadFormsForEntity = React.useCallback(async (entity: string): Promise<IFormDefinition[]> => {
         const cache = getCurrentUserCache();
         const key = getFormsCacheKey(entity);
@@ -214,8 +452,9 @@ const App: React.FC<IAppProps> = (props) => {
         const service = new LtrService(context, entity);
         const forms = await service.getSystemForms();
         cache.forms[key] = forms;
+        persistCurrentUserCache(cache);
         return forms;
-    }, [context, getCurrentUserCache]);
+    }, [getCurrentUserCache, persistCurrentUserCache]);
 
     const loadRelationshipsForEntity = React.useCallback(async (entity: string): Promise<IRelatedRelationship[]> => {
         const cache = getCurrentUserCache();
@@ -227,8 +466,9 @@ const App: React.FC<IAppProps> = (props) => {
         const service = new LtrService(context, entity);
         const relationships = await service.getOneToManyRelationships();
         cache.relationships[key] = relationships;
+        persistCurrentUserCache(cache);
         return relationships;
-    }, [context, getCurrentUserCache]);
+    }, [getCurrentUserCache, persistCurrentUserCache]);
 
     React.useEffect(() => {
         const loadEntityOptions = async () => {
@@ -267,39 +507,96 @@ const App: React.FC<IAppProps> = (props) => {
         };
 
         loadEntityOptions();
-    }, [targetEntity, context]);
+    }, [targetEntity, props.ltrEntities]);
 
-    const handleViewChange = async (viewId: string, currentViews = views) => {
+    const prepareView = React.useCallback((viewId: string, currentViews: IViewDefinition[]) => {
+        setSelectedViewId(viewId);
+        const view = currentViews.find(v => v.id === viewId);
+        if (!view) {
+            diag.error("Selected view not found", null, { viewId });
+            setGridColumns([]);
+            setGridData([]);
+            return;
+        }
+
+        const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
+        setGridColumns(columns);
+        setColumnFilters({});
+        setCurrentPage(1);
+        setGridData([]);
+    }, []);
+
+    const handleViewChange = async (
+        viewId: string,
+        currentViews = views,
+        forceServerRefresh: boolean = false,
+        cacheOnly: boolean = false
+    ) => {
         setLoading(true);
         try {
-            setSelectedViewId(viewId);
             const view = currentViews.find(v => v.id === viewId);
-            if (!view) {
-                diag.error("Selected view not found", null, { viewId });
-                return;
-            }
+            if (!view) return;
 
-            const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
-            setGridColumns(columns);
-            setSearchColumn(columns[0]?.name);
-            setColumnFilters({});
-            setCurrentPage(1);
+            if (selectedViewId !== viewId) {
+                const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
+                setSelectedViewId(viewId);
+                setGridColumns(columns);
+            }
 
             const userId = normalizeGuid(context.userSettings.userId) || 'anonymous';
             const userCache = getBrowserCache(userId);
-            const effectiveFetchXml = appendInitialFetchClause(view.fetchXml, searchColumn, searchText);
-            const clauseKey = `${searchColumn || ''}|${(searchText || '').trim().toLowerCase()}`;
+            const selectedSearchColumn = searchColumns.find(c => c.logicalName === searchColumn);
+            const effectiveFetchXml = appendInitialFetchClause(view.fetchXml, searchColumn, searchText, selectedSearchColumn?.attributeType);
+            const normalizedSearchText = (searchText || '').trim().toLowerCase();
+            const hasSearchClause = !!(searchColumn && normalizedSearchText);
+            const clauseKey = hasSearchClause ? `${searchColumn}|${normalizedSearchText}` : '__nosearch__';
             const cacheKey = `${getViewCacheKey(selectedEntity, viewId, archiveMode)}|${clauseKey}`;
             const cached = userCache.views[cacheKey];
 
-            const data = cached || await ltrService.getLtrData(effectiveFetchXml, archiveMode);
-            if (!cached) {
-                userCache.views[cacheKey] = data;
-                diag.info("View data cached", { cacheKey, count: data.length });
-            } else {
-                diag.info("View data loaded from browser cache", { cacheKey, count: data.length });
+            if (cacheOnly) {
+                if (cached) {
+                    setGridData(cached);
+                    diag.info("Grid data loaded from cache only", { cacheKey, count: cached.length });
+                } else {
+                    const viewKeyPrefix = `${getViewCacheKey(selectedEntity, viewId, archiveMode)}|`;
+                    const noSearchKey = `${viewKeyPrefix}__nosearch__`;
+                    const noSearchRows = userCache.views[noSearchKey];
+                    const candidateKeys = Object.keys(userCache.views).filter(k => k.startsWith(viewKeyPrefix));
+                    const fallbackKey = noSearchRows
+                        ? noSearchKey
+                        : (candidateKeys.length > 0 ? candidateKeys[candidateKeys.length - 1] : undefined);
+                    const fallbackRows = fallbackKey ? userCache.views[fallbackKey] : undefined;
+
+                    if (fallbackRows) {
+                        const locallyFiltered = hasSearchClause
+                            ? applySearchClauseLocally(fallbackRows, searchColumn, searchText, selectedSearchColumn?.attributeType)
+                            : fallbackRows;
+                        setGridData(locallyFiltered);
+                        diag.info("Grid data loaded from fallback cache key", {
+                            requestedCacheKey: cacheKey,
+                            fallbackKey,
+                            sourceCount: fallbackRows.length,
+                            count: locallyFiltered.length,
+                            hasSearchClause
+                        });
+                    } else {
+                        setGridData([]);
+                        diag.info("No cached data found for selected view", { cacheKey, viewKeyPrefix });
+                    }
+                }
+                return;
             }
-            setGridData(data);
+
+            if (forceServerRefresh) {
+                diag.info("Apply Fetch Clause requested: fetching server data", { cacheKey });
+            }
+
+            const data = await ltrService.getLtrData(effectiveFetchXml, archiveMode);
+            userCache.views[cacheKey] = data;
+            upsertRecordsInCache(userCache, selectedEntity, data);
+            persistCurrentUserCache(userCache);
+            diag.info("View data fetched and cached", { cacheKey, count: data.length });
+            setGridData(userCache.views[cacheKey] || []);
             diag.info("Grid data loaded", { count: data.length });
         } catch (err) {
             diag.error("View change failed", err, { viewId, isArchive, entity: selectedEntity });
@@ -319,12 +616,24 @@ const App: React.FC<IAppProps> = (props) => {
                 const service = new LtrService(context, selectedEntity);
                 const vs = await service.getSystemViews();
                 const fs = await loadFormsForEntity(selectedEntity);
+                const searchable = await service.getSearchableAttributes(selectedEntity);
 
                 setViews(vs);
                 setDetailsForms(fs);
+                const searchOptions: ISearchColumnOption[] = searchable.map((a: ISearchableAttribute) => ({
+                    logicalName: a.logicalName,
+                    displayName: a.displayName,
+                    attributeType: a.attributeType
+                }));
+                setSearchColumns(searchOptions);
+                setSearchColumn(prev => (
+                    prev && searchOptions.some(c => c.logicalName === prev)
+                        ? prev
+                        : searchOptions[0]?.logicalName
+                ));
 
                 if (vs.length > 0) {
-                    await handleViewChange(vs[0].id, vs);
+                    prepareView(vs[0].id, vs);
                 } else {
                     setGridColumns([]);
                     setGridData([]);
@@ -348,16 +657,39 @@ const App: React.FC<IAppProps> = (props) => {
         };
 
         loadMetadata();
-    }, [selectedEntity, archiveMode, context, loadFormsForEntity]);
+    }, [selectedEntity, archiveMode, loadFormsForEntity, prepareView]);
 
     const handleRecordSelect = async (recordRef: any) => {
         try {
             const incomingRecord = typeof recordRef === 'object' && recordRef ? recordRef : null;
-            const id = typeof recordRef === 'string' ? normalizeGuid(recordRef) : resolveRecordId(recordRef, selectedEntity);
+            const explicitId = typeof recordRef === 'string' ? normalizeGuid(recordRef) : undefined;
+            const fallbackId = typeof recordRef === 'string' ? undefined : resolveRecordId(recordRef, selectedEntity);
+            const idCandidates = explicitId
+                ? [explicitId]
+                : getRecordIdCandidates(recordRef, selectedEntity);
+            if (!explicitId && fallbackId && !idCandidates.includes(fallbackId)) {
+                idCandidates.unshift(fallbackId);
+            }
+            const id = idCandidates[0];
 
             let record = incomingRecord || undefined;
             if (!record && id) {
                 record = gridData.find(r => resolveRecordId(r, selectedEntity) === id);
+            }
+
+            const userCache = getCurrentUserCache();
+            if (record) {
+                upsertRecordsInCache(userCache, selectedEntity, [record]);
+                persistCurrentUserCache(userCache);
+            }
+
+            if (idCandidates.length > 0) {
+                const cachedRecord = idCandidates
+                    .map(candidateId => getRecordFromCache(userCache, selectedEntity, candidateId))
+                    .find(Boolean);
+                if (cachedRecord) {
+                    record = record ? { ...record, ...cachedRecord } : cachedRecord;
+                }
             }
 
             if (!record) {
@@ -378,6 +710,7 @@ const App: React.FC<IAppProps> = (props) => {
                 recordId: id || resolveRecordId(record, selectedEntity),
                 forms: rootForms,
                 selectedFormId: rootSelectedFormId,
+                selectedFormName: rootForm?.name,
                 definitions: rootDefinitions,
                 relatedDefinitions,
                 relatedData: {},
@@ -395,10 +728,14 @@ const App: React.FC<IAppProps> = (props) => {
         if (!form) return;
 
         writeLastUsedForm(detailContext.entity, formId);
+        if (detailContext.entity === selectedEntity) {
+            setSelectedFormId(formId);
+        }
         const parsed = XmlParserHelper.parseFormXml(form.formXml);
         setDetailContext({
             ...detailContext,
             selectedFormId: formId,
+            selectedFormName: form.name,
             definitions: parsed
         });
     };
@@ -434,9 +771,12 @@ const App: React.FC<IAppProps> = (props) => {
             const service = new LtrService(context, detailContext.entity);
             const rows = await service.getRelatedRecords(relationship, detailContext.recordId, archiveMode);
             userCache.related[cacheKey] = rows;
+            upsertRecordsInCache(userCache, relationship.childEntity, rows);
+            persistCurrentUserCache(userCache);
+            const cachedRows = userCache.related[cacheKey] || [];
             setDetailContext(prev => prev ? {
                 ...prev,
-                relatedData: { ...prev.relatedData, [relationship.key]: rows }
+                relatedData: { ...prev.relatedData, [relationship.key]: cachedRows }
             } : prev);
         } finally {
             setDetailContext(prev => prev ? {
@@ -450,10 +790,28 @@ const App: React.FC<IAppProps> = (props) => {
         if (!detailContext) return;
 
         const normalizedId = normalizeGuid(id);
-        const record = row;
+        const idCandidates = normalizedId
+            ? [normalizedId]
+            : getRecordIdCandidates(row, entity);
+        let record = row;
+
+        const userCache = getCurrentUserCache();
+        if (record) {
+            upsertRecordsInCache(userCache, entity, [record]);
+            persistCurrentUserCache(userCache);
+        }
+
+        if (idCandidates.length > 0) {
+            const cachedRecord = idCandidates
+                .map(candidateId => getRecordFromCache(userCache, entity, candidateId))
+                .find(Boolean);
+            if (cachedRecord) {
+                record = record ? { ...record, ...cachedRecord } : cachedRecord;
+            }
+        }
 
         if (!record) {
-            diag.error("Unable to open related record", null, { entity, id });
+            diag.error("Unable to open related record from cache", null, { entity, id });
             return;
         }
 
@@ -466,9 +824,10 @@ const App: React.FC<IAppProps> = (props) => {
         const nextContext: IDetailContext = {
             entity,
             record,
-            recordId: normalizedId || resolveRecordId(record, entity),
+            recordId: idCandidates[0] || resolveRecordId(record, entity),
             forms,
             selectedFormId: selected?.id,
+            selectedFormName: selected?.name,
             definitions: parsed,
             relatedDefinitions,
             relatedData: {},
@@ -503,6 +862,7 @@ const App: React.FC<IAppProps> = (props) => {
         setSelectedEntity(next);
         setSearchText("");
         setSearchColumn(undefined);
+        setSearchColumns([]);
         setColumnFilters({});
         setCurrentPage(1);
         setDetailContext(undefined);
@@ -602,7 +962,10 @@ const App: React.FC<IAppProps> = (props) => {
                     options={views.map(v => ({ key: v.id, text: v.name }))}
                     onChange={(_e, opt) => {
                         if (opt?.key) {
-                            handleViewChange(opt.key as string);
+                            const nextViewId = opt.key as string;
+                            prepareView(nextViewId, views);
+                            // On view switch, show cached rows for the selected view immediately.
+                            void handleViewChange(nextViewId, views, false, true);
                         }
                     }}
                     autoComplete="on"
@@ -614,11 +977,14 @@ const App: React.FC<IAppProps> = (props) => {
                 <ComboBox
                     label="Search Column"
                     selectedKey={searchColumn}
-                    options={gridColumns.map(c => ({ key: c.name, text: c.displayName || c.name }))}
+                    options={searchColumns.map(c => ({
+                        key: c.logicalName,
+                        text: c.displayName ? `${c.displayName} (${c.logicalName})` : c.logicalName
+                    }))}
                     onChange={(_e, opt) => setSearchColumn(opt?.key as string)}
                     autoComplete="on"
                     useComboBoxAsMenuWidth
-                    disabled={loading || gridColumns.length === 0 || viewMode !== 'GRID'}
+                    disabled={loading || searchColumns.length === 0 || viewMode !== 'GRID'}
                     styles={{ root: { width: 220 } }}
                 />
 
@@ -632,7 +998,22 @@ const App: React.FC<IAppProps> = (props) => {
 
                 <PrimaryButton
                     text="Apply Fetch Clause"
-                    onClick={() => selectedViewId && handleViewChange(selectedViewId)}
+                    onClick={() => {
+                        if (selectedViewId) {
+                            handleViewChange(selectedViewId, views, true);
+                        }
+                    }}
+                    disabled={loading || !selectedViewId || viewMode !== 'GRID'}
+                    styles={{ root: { alignSelf: 'flex-end' } }}
+                />
+
+                <DefaultButton
+                    text="Show Cached Data"
+                    onClick={() => {
+                        if (selectedViewId) {
+                            handleViewChange(selectedViewId, views, false, true);
+                        }
+                    }}
                     disabled={loading || !selectedViewId || viewMode !== 'GRID'}
                     styles={{ root: { alignSelf: 'flex-end' } }}
                 />
@@ -703,6 +1084,7 @@ const App: React.FC<IAppProps> = (props) => {
                         formDefinition={detailContext.definitions}
                         recordTitle={getRecordTitle(detailContext.record, detailContext.entity)}
                         selectedFormId={detailContext.selectedFormId}
+                        selectedFormName={detailContext.selectedFormName}
                         formOptions={detailContext.forms.map(f => ({ key: f.id, text: f.name }))}
                         onFormChange={handleDetailFormChange}
                         selectedRecordId={detailContext.recordId}

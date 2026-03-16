@@ -26,6 +26,12 @@ export interface IRetentionEnabledEntity {
     displayName?: string;
 }
 
+export interface ISearchableAttribute {
+    logicalName: string;
+    displayName?: string;
+    attributeType: string;
+}
+
 export interface IRelatedRelationship {
     key: string;
     schemaName: string;
@@ -56,18 +62,178 @@ const TECHNICAL_ENTITY_PREFIXES = [
     "msdynmkt_"
 ];
 
+const INTERNAL_RETENTION_ENTITIES = new Set([
+    "retentionconfig",
+    "retentionsuccessdetail",
+    "retentioncleanupdetail",
+    "retentionfailuredetail"
+]);
+
 export class LtrService {
     private _context: ComponentFramework.Context<IInputs>;
     private _targetEntity: string;
     private _retentionEnabledCache: Record<string, boolean>;
     private _archivalEnabledCache: Record<string, boolean>;
+    private _attributeNamesCache: Record<string, string[]>;
+    private _searchableAttributesCache: Record<string, ISearchableAttribute[]>;
 
     constructor(context: ComponentFramework.Context<IInputs>, targetEntity: string) {
         this._context = context;
         this._targetEntity = targetEntity;
         this._retentionEnabledCache = {};
         this._archivalEnabledCache = {};
+        this._attributeNamesCache = {};
+        this._searchableAttributesCache = {};
         diag.info(`LtrService initialized for entity '${targetEntity}'`);
+    }
+
+    private isInternalRetentionEntity(entityLogicalName: string): boolean {
+        const logical = (entityLogicalName || '').toLowerCase().trim();
+        if (!logical) {
+            return false;
+        }
+
+        if (INTERNAL_RETENTION_ENTITIES.has(logical)) {
+            return true;
+        }
+
+        return logical.startsWith('retention') && logical.endsWith('detail');
+    }
+
+    public async getSearchableAttributes(entityLogicalName?: string): Promise<ISearchableAttribute[]> {
+        const entity = (entityLogicalName || this._targetEntity || '').toLowerCase();
+        if (!entity) {
+            return [];
+        }
+
+        if (this._searchableAttributesCache[entity]) {
+            return this._searchableAttributesCache[entity];
+        }
+
+        try {
+            const encoded = entity.replace(/'/g, "''");
+            const metadata = await this.fetchMetadata(
+                `EntityDefinitions(LogicalName='${encoded}')?` +
+                `$select=LogicalName&$expand=Attributes(` +
+                `$select=LogicalName,DisplayName,AttributeType,AttributeTypeName,IsValidForRead,IsValidForAdvancedFind,IsLogical` +
+                `)`
+            );
+
+            const attributes = Array.isArray(metadata?.Attributes) ? metadata.Attributes : [];
+            const rows = attributes
+                .filter((a: any) => {
+                    if (!a?.LogicalName) return false;
+
+                    const validForRead =
+                        typeof a.IsValidForRead === 'boolean'
+                            ? a.IsValidForRead
+                            : a.IsValidForRead?.Value;
+                    const validForSearch =
+                        typeof a.IsValidForAdvancedFind === 'boolean'
+                            ? a.IsValidForAdvancedFind
+                            : a.IsValidForAdvancedFind?.Value;
+                    const isLogical =
+                        typeof a.IsLogical === 'boolean'
+                            ? a.IsLogical
+                            : a.IsLogical?.Value;
+
+                    if (validForRead === false || validForSearch === false || isLogical === true) {
+                        return false;
+                    }
+
+                    return true;
+                })
+                .map((a: any) => {
+                    const typeName =
+                        String(
+                            a?.AttributeTypeName?.Value ||
+                            a?.AttributeType ||
+                            ''
+                        ).toLowerCase();
+                    const label =
+                        a?.DisplayName?.UserLocalizedLabel?.Label ||
+                        a?.DisplayName?.LocalizedLabels?.[0]?.Label ||
+                        undefined;
+
+                    return {
+                        logicalName: String(a.LogicalName).toLowerCase(),
+                        displayName: label,
+                        attributeType: typeName || 'unknown'
+                    } as ISearchableAttribute;
+                })
+                .sort((a: ISearchableAttribute, b: ISearchableAttribute) =>
+                    (a.displayName || a.logicalName).localeCompare(b.displayName || b.logicalName)
+                );
+
+            this._searchableAttributesCache[entity] = rows;
+            diag.info('Loaded searchable attributes', {
+                entity,
+                count: rows.length
+            });
+            return rows;
+        } catch (error) {
+            diag.error('Failed to load searchable attributes', error, { entity });
+            return [];
+        }
+    }
+
+    private async getReadableAttributeNames(entityLogicalName?: string): Promise<string[]> {
+        const entity = (entityLogicalName || this._targetEntity || '').toLowerCase();
+        if (!entity) {
+            return [];
+        }
+
+        if (this._attributeNamesCache[entity]) {
+            return this._attributeNamesCache[entity];
+        }
+
+        try {
+            const encoded = entity.replace(/'/g, "''");
+            const metadata = await this.fetchMetadata(
+                `EntityDefinitions(LogicalName='${encoded}')?$select=LogicalName&$expand=Attributes($select=LogicalName,IsValidForRead)`
+            );
+
+            const attributes = Array.isArray(metadata?.Attributes) ? metadata.Attributes : [];
+            const names = attributes
+                .filter((a: any) => {
+                    if (!a?.LogicalName) return false;
+
+                    const validForRead =
+                        typeof a.IsValidForRead === 'boolean'
+                            ? a.IsValidForRead
+                            : a.IsValidForRead?.Value;
+
+                    return validForRead !== false;
+                })
+                .map((a: any) => String(a.LogicalName))
+                .sort((a: string, b: string) => a.localeCompare(b));
+
+            this._attributeNamesCache[entity] = names;
+            diag.info("Loaded readable attribute names", { entity, count: names.length });
+            return names;
+        } catch (error) {
+            diag.info("Failed to load readable attribute names", {
+                entity,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return [];
+        }
+    }
+
+    private hydrateRowsWithAllAttributeKeys(rows: any[], attributeNames: string[]): any[] {
+        if (!rows?.length || !attributeNames?.length) {
+            return rows;
+        }
+
+        return rows.map((row) => {
+            const hydrated: any = { ...row };
+            for (const attr of attributeNames) {
+                if (!(attr in hydrated)) {
+                    hydrated[attr] = null;
+                }
+            }
+            return hydrated;
+        });
     }
 
     private ensureRetainedFetch(fetchXml: string): string {
@@ -79,11 +245,15 @@ export class LtrService {
         return updated || fetchXml;
     }
 
-    private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number): string {
+    private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number, attributeNames: string[]): string {
         const id = parentId.replace(/[{}]/g, "");
+        const projection = attributeNames.length > 0
+            ? attributeNames.map(a => `<attribute name="${a}" />`).join("")
+            : `<all-attributes />`;
+
         return `<fetch version="1.0" mapping="logical" top="${Math.max(1, maxRows)}">
             <entity name="${relationship.childEntity}">
-                <all-attributes />
+                ${projection}
                 <filter type="and">
                     <condition attribute="${relationship.childLookupAttribute}" operator="eq" value="${id}" />
                 </filter>
@@ -249,12 +419,21 @@ export class LtrService {
                     .filter((name: string) => !!name)
             ));
 
-            if (logicalNames.length === 0) {
+            const filteredLogicalNames = logicalNames.filter((name) => !this.isInternalRetentionEntity(name));
+            const excluded = logicalNames.filter((name) => this.isInternalRetentionEntity(name));
+            if (excluded.length > 0) {
+                diag.info('Excluded internal retention entities from Select Entity options', {
+                    count: excluded.length,
+                    sample: excluded.slice(0, 10)
+                });
+            }
+
+            if (filteredLogicalNames.length === 0) {
                 diag.info("No active retentionconfigs found; falling back to metadata flags");
                 throw new Error("NoActiveRetentionConfigs");
             }
 
-            const checks = await Promise.all(logicalNames.map(async (logicalName) => {
+            const checks = await Promise.all(filteredLogicalNames.map(async (logicalName) => {
                 const encoded = logicalName.replace(/'/g, "''");
                 try {
                     const metadata = await this.fetchMetadata(`EntityDefinitions(LogicalName='${encoded}')?$select=LogicalName,DisplayName`);
@@ -311,7 +490,14 @@ export class LtrService {
                 }
 
                 const entities = rows
-                    .filter((r: any) => !!r?.LogicalName && r?.[property] === true)
+                    .filter((r: any) => {
+                        if (!r?.LogicalName || r?.[property] !== true) {
+                            return false;
+                        }
+
+                        const logicalName = String(r.LogicalName).toLowerCase();
+                        return !this.isInternalRetentionEntity(logicalName);
+                    })
                     .map((r: any) => {
                         const label =
                             r?.DisplayName?.UserLocalizedLabel?.Label ||
@@ -348,14 +534,177 @@ export class LtrService {
         return fetchXml;
     }
 
-    private expandFetchToAllColumns(fetchXml: string): string {
+    private expandFetchToExplicitColumns(fetchXml: string, attributeNames: string[]): string {
         if (!fetchXml) return fetchXml;
-        if (/<all-attributes\s*\/?>/i.test(fetchXml)) {
+        if (!attributeNames || attributeNames.length === 0) {
+            // Fallback behavior if metadata attributes are unavailable.
+            return fetchXml.replace(/(<entity\b[^>]*>)/i, "$1<all-attributes />");
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(fetchXml, "text/xml");
+            const parseError = doc.getElementsByTagName("parsererror");
+            if (parseError && parseError.length > 0) {
+                throw new Error("Invalid FetchXML parser result");
+            }
+
+            const entity = doc.getElementsByTagName("entity")[0];
+            if (!entity) {
+                return fetchXml;
+            }
+
+            // Replace only root entity projection with all-attributes.
+            // Keep filters, orders, links, and conditions from the selected view.
+            const projectionNodes = Array.from(entity.childNodes).filter((node: any) => {
+                const name = (node.nodeName || "").toLowerCase();
+                return name === "attribute" || name === "all-attributes";
+            });
+            projectionNodes.forEach((node: any) => entity.removeChild(node));
+
+            const fragment = doc.createDocumentFragment();
+            attributeNames.forEach((attr) => {
+                const node = doc.createElement("attribute");
+                node.setAttribute("name", attr);
+                fragment.appendChild(node);
+            });
+
+            const firstElementChild = Array.from(entity.childNodes).find((n: any) => n.nodeType === 1) as Node | undefined;
+            if (firstElementChild) {
+                entity.insertBefore(fragment, firstElementChild);
+            } else {
+                entity.appendChild(fragment);
+            }
+
+            const serializer = new XMLSerializer();
+            return serializer.serializeToString(doc);
+        } catch {
+            // Regex fallback if XML parser is unavailable in host context.
+            const withoutAll = fetchXml.replace(/<all-attributes\s*\/?>(?:<\/all-attributes>)?/gi, "");
+            const withoutAttributes = withoutAll.replace(/<attribute\s+name=["'][^"']+["']\s*\/>/gi, "");
+            const explicit = attributeNames.map(a => `<attribute name="${a}" />`).join("");
+            return withoutAttributes.replace(/(<entity\b[^>]*>)/i, `$1${explicit}`);
+        }
+    }
+
+    private sanitizeFetchForRetainedStore(fetchXml: string, validAttributes: string[]): string {
+        if (!fetchXml) {
             return fetchXml;
         }
 
-        // Expand the root entity selection to all columns so detail view can be opened from in-memory data.
-        return fetchXml.replace(/(<entity\b[^>]*>)/i, "$1<all-attributes />");
+        const targetEntity = (this._targetEntity || "").toLowerCase();
+        const validAttributeSet = new Set((validAttributes || []).map(a => a.toLowerCase()));
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(fetchXml, "text/xml");
+            const parseError = doc.getElementsByTagName("parsererror");
+            if (parseError && parseError.length > 0) {
+                throw new Error("Invalid FetchXML parser result");
+            }
+
+            const entity = doc.getElementsByTagName("entity")[0];
+            if (!entity) {
+                return fetchXml;
+            }
+
+            let removedLinkEntities = 0;
+            let removedConditions = 0;
+            let removedOrders = 0;
+            const removedConditionAttributes: string[] = [];
+            const removedOrderAttributes: string[] = [];
+
+            const linkEntities = Array.from(entity.getElementsByTagName("link-entity"));
+            for (let i = linkEntities.length - 1; i >= 0; i--) {
+                const node = linkEntities[i];
+                if (node.parentNode) {
+                    node.parentNode.removeChild(node);
+                    removedLinkEntities++;
+                }
+            }
+
+            const conditions = Array.from(entity.getElementsByTagName("condition"));
+            for (const condition of conditions) {
+                const parentNode = condition.parentNode;
+                if (!parentNode) {
+                    continue;
+                }
+
+                const conditionEntityName = (condition.getAttribute("entityname") || "").toLowerCase();
+                const conditionAttribute = (condition.getAttribute("attribute") || "").toLowerCase();
+
+                const crossEntityCondition = !!conditionEntityName && conditionEntityName !== targetEntity;
+                const aliasedCondition = conditionAttribute.includes(".");
+                const invalidAttributeCondition = !!conditionAttribute && validAttributeSet.size > 0 && !validAttributeSet.has(conditionAttribute);
+
+                if (crossEntityCondition || aliasedCondition || invalidAttributeCondition) {
+                    if (conditionAttribute) {
+                        removedConditionAttributes.push(conditionAttribute);
+                    }
+                    parentNode.removeChild(condition);
+                    removedConditions++;
+                }
+            }
+
+            const orders = Array.from(entity.getElementsByTagName("order"));
+            for (const order of orders) {
+                const parentNode = order.parentNode;
+                if (!parentNode) {
+                    continue;
+                }
+
+                const orderEntityName = (order.getAttribute("entityname") || "").toLowerCase();
+                const orderAttribute = (order.getAttribute("attribute") || "").toLowerCase();
+
+                const crossEntityOrder = !!orderEntityName && orderEntityName !== targetEntity;
+                const aliasedOrder = orderAttribute.includes(".");
+                const invalidAttributeOrder = !!orderAttribute && validAttributeSet.size > 0 && !validAttributeSet.has(orderAttribute);
+
+                if (crossEntityOrder || aliasedOrder || invalidAttributeOrder) {
+                    if (orderAttribute) {
+                        removedOrderAttributes.push(orderAttribute);
+                    }
+                    parentNode.removeChild(order);
+                    removedOrders++;
+                }
+            }
+
+            const filters = Array.from(entity.getElementsByTagName("filter"));
+            for (let i = filters.length - 1; i >= 0; i--) {
+                const filter = filters[i];
+                const hasElementChildren = Array.from(filter.childNodes).some((n: any) => n.nodeType === 1);
+                if (!hasElementChildren && filter.parentNode) {
+                    filter.parentNode.removeChild(filter);
+                }
+            }
+
+            const serializer = new XMLSerializer();
+            const sanitizedXml = serializer.serializeToString(doc);
+            diag.info("Retained FetchXML sanitizer output", {
+                entity: this._targetEntity,
+                removedLinkEntities,
+                removedConditions,
+                removedOrders,
+                removedConditionAttributes: Array.from(new Set(removedConditionAttributes)).sort(),
+                removedOrderAttributes: Array.from(new Set(removedOrderAttributes)).sort(),
+                validAttributeCount: validAttributeSet.size,
+                sanitizedFetchXml: sanitizedXml
+            });
+            return sanitizedXml;
+        } catch {
+            let sanitized = fetchXml;
+            sanitized = sanitized.replace(/<link-entity\b[\s\S]*?<\/link-entity>/gi, "");
+            sanitized = sanitized.replace(/<condition\b[^>]*\bentityname=["'][^"']+["'][^>]*\/>/gi, "");
+            sanitized = sanitized.replace(/<condition\b[^>]*\battribute=["'][^"']*\.[^"']*["'][^>]*\/>/gi, "");
+            sanitized = sanitized.replace(/<order\b[^>]*\bentityname=["'][^"']+["'][^>]*\/>/gi, "");
+            sanitized = sanitized.replace(/<order\b[^>]*\battribute=["'][^"']*\.[^"']*["'][^>]*\/>/gi, "");
+            diag.info("Retained FetchXML sanitizer fallback output", {
+                entity: this._targetEntity,
+                validAttributeCount: validAttributeSet.size,
+                sanitizedFetchXml: sanitized
+            });
+            return sanitized;
+        }
     }
 
     /**
@@ -401,12 +750,18 @@ export class LtrService {
 
             const result = await this._context.webAPI.retrieveMultipleRecords("systemform", query);
 
-            const forms = result.entities.map(e => ({
+            const mainForms = (result.entities || []).filter((e: any) => Number(e.type) === 2);
+
+            const forms = mainForms.map(e => ({
                 id: e.formid,
                 name: e.name,
                 formXml: e.formxml
             }));
-            diag.info("Fetched system forms", { count: forms.length });
+            diag.info("Fetched system forms", {
+                count: forms.length,
+                totalRetrieved: result.entities?.length || 0,
+                filteredToMain: true
+            });
             return forms;
         } catch (error) {
             diag.error("Error fetching forms", error, { entity: this._targetEntity });
@@ -423,9 +778,21 @@ export class LtrService {
     public async getLtrData(fetchXml: string, isArchive: boolean, maxRows: number = 5000): Promise<any[]> {
         try {
             diag.info("Fetching LTR data", { entity: this._targetEntity, isArchive });
-            const expanded = this.expandFetchToAllColumns(fetchXml);
+            const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
+            const expanded = this.expandFetchToExplicitColumns(fetchXml, readableAttributeNames);
             const withPrimaryId = this.ensurePrimaryIdAttribute(expanded);
-            const effectiveFetch = isArchive ? this.ensureRetainedFetch(withPrimaryId) : withPrimaryId;
+            const effectiveFetch = isArchive
+                ? this.ensureRetainedFetch(this.sanitizeFetchForRetainedStore(withPrimaryId, readableAttributeNames))
+                : withPrimaryId;
+            diag.info("LTR FetchXML diagnostics", {
+                entity: this._targetEntity,
+                isArchive,
+                readableAttributeCount: readableAttributeNames.length,
+                originalFetchXml: fetchXml,
+                expandedFetchXml: expanded,
+                fetchWithPrimaryId: withPrimaryId,
+                effectiveFetchXml: effectiveFetch
+            });
             // NOTE: If specific API is needed for LTR, replace this logic.
             // Some LTR implementations use a custom message or specific headers.
             // Assuming the fetchXml provided by the View is sufficient or needs modification.
@@ -459,8 +826,15 @@ export class LtrService {
             }
 
             const capped = allRows.slice(0, maxRows);
-            diag.info("Fetched LTR data", { count: capped.length, isArchive, maxRows });
-            return capped;
+            const hydrated = this.hydrateRowsWithAllAttributeKeys(capped, readableAttributeNames);
+
+            diag.info("Fetched LTR data", {
+                count: hydrated.length,
+                isArchive,
+                maxRows,
+                hydratedAttributeCount: readableAttributeNames.length
+            });
+            return hydrated;
         } catch (error) {
             diag.error("Error fetching LTR data", error, { entity: this._targetEntity, isArchive });
             return [];
@@ -523,7 +897,8 @@ export class LtrService {
 
     public async getRelatedRecords(relationship: IRelatedRelationship, parentId: string, isArchive: boolean, maxRows: number = 250): Promise<any[]> {
         try {
-            const fetchXml = this.buildRelatedFetch(relationship, parentId, maxRows);
+            const readableAttributeNames = await this.getReadableAttributeNames(relationship.childEntity);
+            const fetchXml = this.buildRelatedFetch(relationship, parentId, maxRows, readableAttributeNames);
             const effectiveFetch = isArchive ? this.ensureRetainedFetch(fetchXml) : fetchXml;
             diag.info("Fetching related records", {
                 relationship: relationship.schemaName,
@@ -533,12 +908,14 @@ export class LtrService {
                 maxRows
             });
             const result = await this._context.webAPI.retrieveMultipleRecords(relationship.childEntity, `?fetchXml=${encodeURIComponent(effectiveFetch)}`, Math.min(Math.max(maxRows, 1), 5000));
+            const hydrated = this.hydrateRowsWithAllAttributeKeys(result.entities || [], readableAttributeNames);
             diag.info("Fetched related records", {
                 relationship: relationship.schemaName,
                 childEntity: relationship.childEntity,
-                count: result.entities.length
+                count: hydrated.length,
+                hydratedAttributeCount: readableAttributeNames.length
             });
-            return result.entities;
+            return hydrated;
         } catch (error) {
             diag.error("Error fetching related records", error, {
                 relationship: relationship.schemaName,
@@ -556,23 +933,24 @@ export class LtrService {
     public async getRecordDetails(id: string, isArchive: boolean = false): Promise<any> {
         try {
             if (isArchive) {
-                // To fetch a single retained record, we must use FetchXML with datasource="retained"
-                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained">
-                  <entity name="${this._targetEntity}">
-                    <all-attributes />
-                    <filter type="and">
-                      <condition attribute="${this._targetEntity}id" operator="eq" value="${id}" />
-                    </filter>
-                  </entity>
-                </fetch>`;
+                                const normalizedId = String(id || '').replace(/[{}]/g, '').toLowerCase();
+                                const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
+                                const projection = readableAttributeNames.length > 0
+                                        ? readableAttributeNames.map(a => `<attribute name="${a}" />`).join("")
+                                        : `<all-attributes />`;
 
-                // Reuse the LTR fetch logic which handles the attribute injection/verification
-                // (Note: we already added it in the string above, but getLtrData adds it again if isArchive=true 
-                //  so strictly speaking we should pass raw xml or adjust getLtrData logic. 
-                //  For safety, we'll just call retrieveMultipleRecords directly here to be explicit).
+                                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained" top="1">
+                                    <entity name="${this._targetEntity}">
+                                        ${projection}
+                                        <filter type="and">
+                                            <condition attribute="${this._targetEntity}id" operator="eq" value="${normalizedId}" />
+                                        </filter>
+                                    </entity>
+                                </fetch>`;
 
-                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
-                const record = result.entities.length > 0 ? result.entities[0] : null;
+                                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`, 1);
+                                const hydrated = this.hydrateRowsWithAllAttributeKeys(result.entities || [], readableAttributeNames);
+                                const record = hydrated.length > 0 ? hydrated[0] : null;
                 diag.info("Fetched retained record", { entity: this._targetEntity, id, found: !!record });
                 return record;
             }
