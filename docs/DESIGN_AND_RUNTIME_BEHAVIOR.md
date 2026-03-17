@@ -98,3 +98,32 @@ After importing managed solution:
   - System Administrator user can open the form.
   - Non-admin user does not receive this admin form.
 - Validate Fetch Archive / Show Cached behavior and drill-down/back behavior.
+
+## 12. SystemUser LTRDisplay Usage Video
+
+Use this section to capture and share a real runtime walkthrough from the model-driven app.
+
+### Embedded video (drop-in)
+
+<video controls width="960" src="media/LTRDisplay_SystemUser_Usage.mp4">
+  Your browser does not support embedded video. Use the direct file link below.
+</video>
+
+Direct link: [LTRDisplay SystemUser usage video](media/LTRDisplay_SystemUser_Usage.mp4)
+
+### Recording checklist (2-4 minutes)
+
+1. Open the model-driven app as a System Administrator.
+2. Navigate to Users and open a user record on LTRDisplay Main Form.
+3. Show that header/command chrome starts hidden and can be toggled with arrows.
+4. Click Fetch Archive and wait for rows to load.
+5. Switch to Show Cached and confirm cached replay works without refetch.
+6. Open a record in the grid and show Record Data labels.
+7. Open Audit History and show changed-on/by and old/new values.
+8. Open Related Records, load one relationship, and demonstrate drill-down/back.
+9. End by showing role-restricted behavior expectation (admin-only form).
+
+### Notes
+
+- Save the recording as: docs/media/LTRDisplay_SystemUser_Usage.mp4
+- If repository size is a concern, keep the clip under 40 MB (H.264, 1080p).
