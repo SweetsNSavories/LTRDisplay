@@ -127,3 +127,33 @@ Direct link: [LTRDisplay SystemUser usage video](media/LTRDisplay_SystemUser_Usa
 
 - Save the recording as: docs/media/LTRDisplay_SystemUser_Usage.mp4
 - If repository size is a concern, keep the clip under 40 MB (H.264, 1080p).
+
+## 13. UCI Execution Trace (Playwright)
+
+Execution date: 2026-03-17
+
+Runtime target used:
+
+- Entity: systemuser
+- Mode: UCI runtime
+- URL pattern: main.aspx with `pagetype=entityrecord`
+- Record tested: `# AgCD-CSC-Prod` (`systemuserid=10fd400c-1821-f111-88b4-6045bda7ffa4`)
+
+Actions executed in order:
+
+1. Opened UCI Enabled Users list and navigated into the target user record.
+2. Confirmed `Explorer - LTR` control rendered on the `LTRDisplay Main Form` in runtime.
+3. Ran `Fetch Archive` and waited for completion.
+4. Ran `Show Cached` and confirmed cached replay path is active.
+5. Selected a returned Account row (`LTR-Account-name-1-2901`).
+6. Opened `Record Data` tab and verified key/value output.
+7. Opened `Audit History` tab and verified changed-on/by with old/new values.
+8. Opened `Related` tab and verified relationship list with `Load` action.
+
+Observed behavior:
+
+- Initial fetch may show a short `Loading LTR Data...` period before controls re-enable.
+- After selection, detailed form tabs are visible and interactive.
+- Related tab loads relationship choices and allows explicit lazy load.
+
+Note: This environment captures screenshots during automation but does not provide direct MP4 recording from the integrated browser toolchain. Use local desktop recording to generate `docs/media/LTRDisplay_SystemUser_Usage.mp4` while following Section 12.
