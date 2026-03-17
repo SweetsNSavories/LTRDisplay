@@ -16,6 +16,7 @@ Place walkthrough recordings and screenshots used by documentation in this folde
 - 06-show-cached-grid.png
 - 07-form-switcher-menu.png
 - 08-header-shown.png
+- 09-initial-form-load.png
 
 When this file exists, it is embedded by DESIGN_AND_RUNTIME_BEHAVIOR.md.
 

@@ -130,6 +130,10 @@ Direct link: [LTRDisplay SystemUser usage video](media/LTRDisplay_SystemUser_Usa
 
 ### Screenshot walkthrough (UCI)
 
+0. Initial form load (before running Fetch Archive):
+
+![UCI initial form load](media/09-initial-form-load.png)
+
 1. Grid and actions after archive/cached usage:
 
 ![UCI grid and actions](media/01-grid-and-actions.png)
