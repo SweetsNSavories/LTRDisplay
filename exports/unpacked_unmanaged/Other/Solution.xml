@@ -1,0 +1,119 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ImportExportXml version="9.2.26032.142" SolutionPackageVersion="9.2" languagecode="1033" generatedBy="CrmLive" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" OrganizationVersion="9.2.26032.142" OrganizationSchemaType="Full" CRMServerServiceabilityVersion="9.2.26032.00142">
+  <SolutionManifest>
+    <UniqueName>LTRDisplay</UniqueName>
+    <LocalizedNames>
+      <LocalizedName description="LTRDisplay" languagecode="1033" />
+    </LocalizedNames>
+    <Descriptions />
+    <Version>1.0.0.0</Version>
+    <Managed>0</Managed>
+    <Publisher>
+      <UniqueName>LTR</UniqueName>
+      <LocalizedNames>
+        <LocalizedName description="LTR" languagecode="1033" />
+      </LocalizedNames>
+      <Descriptions>
+        <Description description="LTR" languagecode="1033" />
+      </Descriptions>
+      <EMailAddress xsi:nil="true"></EMailAddress>
+      <SupportingWebsiteUrl xsi:nil="true"></SupportingWebsiteUrl>
+      <CustomizationPrefix>ltr</CustomizationPrefix>
+      <CustomizationOptionValuePrefix>65377</CustomizationOptionValuePrefix>
+      <Addresses>
+        <Address>
+          <AddressNumber>1</AddressNumber>
+          <AddressTypeCode>1</AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode>1</ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+        <Address>
+          <AddressNumber>2</AddressNumber>
+          <AddressTypeCode>1</AddressTypeCode>
+          <City xsi:nil="true"></City>
+          <County xsi:nil="true"></County>
+          <Country xsi:nil="true"></Country>
+          <Fax xsi:nil="true"></Fax>
+          <FreightTermsCode xsi:nil="true"></FreightTermsCode>
+          <ImportSequenceNumber xsi:nil="true"></ImportSequenceNumber>
+          <Latitude xsi:nil="true"></Latitude>
+          <Line1 xsi:nil="true"></Line1>
+          <Line2 xsi:nil="true"></Line2>
+          <Line3 xsi:nil="true"></Line3>
+          <Longitude xsi:nil="true"></Longitude>
+          <Name xsi:nil="true"></Name>
+          <PostalCode xsi:nil="true"></PostalCode>
+          <PostOfficeBox xsi:nil="true"></PostOfficeBox>
+          <PrimaryContactName xsi:nil="true"></PrimaryContactName>
+          <ShippingMethodCode>1</ShippingMethodCode>
+          <StateOrProvince xsi:nil="true"></StateOrProvince>
+          <Telephone1 xsi:nil="true"></Telephone1>
+          <Telephone2 xsi:nil="true"></Telephone2>
+          <Telephone3 xsi:nil="true"></Telephone3>
+          <TimeZoneRuleVersionNumber xsi:nil="true"></TimeZoneRuleVersionNumber>
+          <UPSZone xsi:nil="true"></UPSZone>
+          <UTCOffset xsi:nil="true"></UTCOffset>
+          <UTCConversionTimeZoneCode xsi:nil="true"></UTCConversionTimeZoneCode>
+        </Address>
+      </Addresses>
+    </Publisher>
+    <RootComponents>
+      <RootComponent type="1" schemaName="systemuser" behavior="2" />
+      <RootComponent type="66" schemaName="inapp_InAppNotification.NotificationControl" behavior="0" />
+      <RootComponent type="66" schemaName="ltr_LTRDisplay.LTRDisplayControl" behavior="0" />
+    </RootComponents>
+    <MissingDependencies>
+      <MissingDependency>
+        <Required type="1" schemaName="systemuser" displayName="SystemUser" parentSchemaName="" solution="Active (1.0)" />
+        <Dependent type="1" schemaName="systemuser" displayName="SystemUser" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_agentAttributesSubgridActions.js" displayName="msdyn_agentAttributesSubgridActions.js" solution="msdyn_AgentGroupManager (1.5.26024.1027)">
+          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
+        </Required>
+        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_capacityprofileSubgridActions.js" displayName="msdyn_capacityprofileSubgridActions.js" solution="OCBaseURBase (1.5.26024.1027)">
+          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
+        </Required>
+        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" displayName="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" solution="msdyn_OmnichannelBotEnablerPatch (1.5.27.8)">
+          <package appName="OmnichannelPrime" version="1.10.0.37">msdyn_ContactCenterEnablement (1.10.0.37)</package>
+          <package appName="OmnichannelPrime" version="1.10.0.23">msdyn_OmnichannelRealtimeMonitoring (1.10.0.23)</package>
+        </Required>
+        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
+      </MissingDependency>
+      <MissingDependency>
+        <Required type="61" schemaName="msdyn_userSettings.js" displayName="msdyn_userSettings.js" solution="OmnichannelBase (1.10.0.138)">
+          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
+        </Required>
+        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
+      </MissingDependency>
+    </MissingDependencies>
+  </SolutionManifest>
+</ImportExportXml>
