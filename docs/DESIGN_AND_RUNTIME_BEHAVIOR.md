@@ -130,41 +130,39 @@ Direct link: [LTRDisplay SystemUser usage video](media/LTRDisplay_SystemUser_Usa
 
 ### Screenshot walkthrough (UCI)
 
-0. Initial form load (before running Fetch Archive):
+1. Initial form load (before running Fetch Archive).
 
 ![UCI initial form load](media/09-initial-form-load.png)
 
-1. Grid and actions after archive/cached usage:
-
-![UCI grid and actions](media/01-grid-and-actions.png)
-
-2. Record Data tab after opening a selected row:
-
-![UCI record data tab](media/02-record-data-tab.png)
-
-3. Audit History tab with changed values:
-
-![UCI audit history tab](media/03-audit-history-tab.png)
-
-4. Related tab with relationship list and Load action:
-
-![UCI related tab](media/04-related-tab.png)
-
-### Additional screenshots (requested)
-
-5. Initial Fetch Archive state (loading spinner and disabled controls):
+2. Initial Fetch Archive state (loading spinner and disabled controls).
 
 ![UCI fetch archive loading](media/05-fetch-archive-loading.png)
 
-6. Show Cached state with cached rows displayed in grid:
+3. Show Cached state with cached rows displayed in grid.
 
 ![UCI show cached grid](media/06-show-cached-grid.png)
 
-7. Form switcher menu expanded from selected record header:
+4. Grid and actions baseline view.
+
+![UCI grid and actions](media/01-grid-and-actions.png)
+
+5. Record detail context after opening a row.
 
 ![UCI form switcher menu](media/07-form-switcher-menu.png)
 
-8. Header and command bar shown after toggle (up-arrow action):
+6. Record Data tab after opening a selected row.
+
+![UCI record data tab](media/02-record-data-tab.png)
+
+7. Audit History tab with changed values.
+
+![UCI audit history tab](media/03-audit-history-tab.png)
+
+8. Related tab with relationship list and Load action.
+
+![UCI related tab](media/04-related-tab.png)
+
+9. Header and command bar shown after toggle (up-arrow action).
 
 ![UCI header shown](media/08-header-shown.png)
 

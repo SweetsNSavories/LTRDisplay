@@ -6,6 +6,7 @@ A model-driven app control to surface Long Term Retention (LTR) records for a Da
 - Architecture and cache internals: `docs/ARCHITECTURE_AND_CACHE.md`
 - Runtime behavior and packaging validation: `docs/DESIGN_AND_RUNTIME_BEHAVIOR.md`
 - SystemUser usage walkthrough video embed: `docs/DESIGN_AND_RUNTIME_BEHAVIOR.md` (Section 12)
+- Carousel and voice-over storyboard: `docs/LTRDISPLAY_USAGE_CAROUSEL.md`
 
 ## How to add to a form (quick start)
 1) On your form, create a **single tab** with **one section** and **one column**. You can hide all existing data-bound fields in that section.
