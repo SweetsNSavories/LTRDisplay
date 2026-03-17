@@ -128,6 +128,42 @@ Direct link: [LTRDisplay SystemUser usage video](media/LTRDisplay_SystemUser_Usa
 - Save the recording as: docs/media/LTRDisplay_SystemUser_Usage.mp4
 - If repository size is a concern, keep the clip under 40 MB (H.264, 1080p).
 
+### Screenshot walkthrough (UCI)
+
+1. Grid and actions after archive/cached usage:
+
+![UCI grid and actions](media/01-grid-and-actions.png)
+
+2. Record Data tab after opening a selected row:
+
+![UCI record data tab](media/02-record-data-tab.png)
+
+3. Audit History tab with changed values:
+
+![UCI audit history tab](media/03-audit-history-tab.png)
+
+4. Related tab with relationship list and Load action:
+
+![UCI related tab](media/04-related-tab.png)
+
+### Additional screenshots (requested)
+
+5. Initial Fetch Archive state (loading spinner and disabled controls):
+
+![UCI fetch archive loading](media/05-fetch-archive-loading.png)
+
+6. Show Cached state with cached rows displayed in grid:
+
+![UCI show cached grid](media/06-show-cached-grid.png)
+
+7. Form switcher menu expanded from selected record header:
+
+![UCI form switcher menu](media/07-form-switcher-menu.png)
+
+8. Header and command bar shown after toggle (up-arrow action):
+
+![UCI header shown](media/08-header-shown.png)
+
 ## 13. UCI Execution Trace (Playwright)
 
 Execution date: 2026-03-17
