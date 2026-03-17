@@ -9,5 +9,7 @@ pac-installer.pkg
 *.zip
 !solution/LTRDisplay_1_0_0_0_unmanaged.zip
 !solution/LTRDisplay_1_0_0_0_managed.zip
+!solution/LTRDisplay_unmanaged_latest.zip
+!solution/LTRDisplay_managed_latest.zip
 ~/Library/Microsoft/PowerAppsCli/
 **/PowerAppsCli/usersettings.json
