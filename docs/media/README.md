@@ -18,6 +18,19 @@ Place walkthrough recordings and screenshots used by documentation in this folde
 - 08-header-shown.png
 - 09-initial-form-load.png
 
+## 10-image manual set
+
+- manual-step-01.png
+- manual-step-02.png
+- manual-step-03.png
+- manual-step-04.png
+- manual-step-05.png
+- manual-step-06.png
+- manual-step-07.png
+- manual-step-08.png
+- manual-step-09.png
+- manual-step-10.png
+
 When this file exists, it is embedded by DESIGN_AND_RUNTIME_BEHAVIOR.md.
 
 ## Screenshot assets embedded in docs
