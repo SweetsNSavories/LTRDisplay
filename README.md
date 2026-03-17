@@ -7,6 +7,7 @@ A model-driven app control to surface Long Term Retention (LTR) records for a Da
 - Runtime behavior and packaging validation: `docs/DESIGN_AND_RUNTIME_BEHAVIOR.md`
 - SystemUser usage walkthrough video embed: `docs/DESIGN_AND_RUNTIME_BEHAVIOR.md` (Section 12)
 - Step-by-step usage manual with embedded screenshots: `docs/LTRDISPLAY_USAGE_MANUAL.md`
+- All-in-one blog/PDF submission document: `docs/LTRDISPLAY_MICROSOFT_BLOG_SUBMISSION.md`
 
 ## How to add to a form (quick start)
 1) On your form, create a **single tab** with **one section** and **one column**. You can hide all existing data-bound fields in that section.
