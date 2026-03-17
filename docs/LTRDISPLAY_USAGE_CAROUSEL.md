@@ -1,129 +1,74 @@
-# LTRDisplay Control Usage Guide (Carousel + Voice-over)
+# LTRDisplay Control User Guide
 
-Use this file as a ready storyboard for social carousel images or AI-generated video narration.
+This document explains how to use the LTRDisplay control in UCI with a complete visual walkthrough.
 
-## Audience
+## Prerequisites
 
-- System Administrators
-- Dataverse makers validating archive record exploration
-- Demo reviewers who need a short visual walkthrough
+- You can open a System User record on the `LTRDisplay Main Form`.
+- You have permission to read views/forms and related metadata.
+- The control is configured with archive mode enabled.
 
-## Slide Plan (9 slides)
+## Step-by-Step Usage
 
-### Slide 1: Initial form load
+### 1. Open the form (initial state)
 
-Image: `docs/media/09-initial-form-load.png`
+At initial load, the control shows entity/view selectors and action buttons.
 
-On-screen text:
-- LTRDisplay opens inside the User form.
-- Select Entity and Select View are ready.
+![Initial form load](media/09-initial-form-load.png)
 
-Voice-over:
-- "This is the initial LTRDisplay state in UCI. No archive query has run yet, and the control is ready for entity and view selection."
+### 2. Run Fetch Archive
 
-### Slide 2: Fetch Archive starts
+Click `Fetch Archive` to query retained records using the selected view.
 
-Image: `docs/media/05-fetch-archive-loading.png`
+During fetch, controls may be temporarily disabled and a loading message appears.
 
-On-screen text:
-- Fetch Archive started.
-- Control shows loading and temporary disabled actions.
+![Fetch Archive loading](media/05-fetch-archive-loading.png)
 
-Voice-over:
-- "When we click Fetch Archive, the control runs retained-data fetch using the selected Dataverse view clause."
+### 3. Review cached replay with Show Cached
 
-### Slide 3: Show Cached result
+Click `Show Cached` to render from local cache without a new archive fetch.
 
-Image: `docs/media/06-show-cached-grid.png`
+![Show Cached grid](media/06-show-cached-grid.png)
 
-On-screen text:
-- Show Cached uses local cache.
-- No new archive fetch required.
+### 4. Work with grid rows
 
-Voice-over:
-- "Show Cached replays cached rows and applies local view filtering, so users can review data without another archive round-trip."
+The grid shows view-based columns and supports filtering and paging.
 
-### Slide 4: Grid baseline
+![Grid baseline](media/01-grid-and-actions.png)
 
-Image: `docs/media/01-grid-and-actions.png`
+### 5. Open a row and switch forms if needed
 
-On-screen text:
-- Grid columns are view-driven.
-- Filters and paging are client-side.
+Select a row to open detail context. Use the form switcher to change form layout for that record type.
 
-Voice-over:
-- "The grid reflects selected-view columns. Column filters and paging are handled on the client over projected rows."
+![Form switcher](media/07-form-switcher-menu.png)
 
-### Slide 5: Open a row and detail context
+### 6. Use Record Data tab
 
-Image: `docs/media/07-form-switcher-menu.png`
+Open `Record Data` to inspect field/value output with label mapping.
 
-On-screen text:
-- Selecting a row opens detail context.
-- Form switcher is available.
+![Record Data tab](media/02-record-data-tab.png)
 
-Voice-over:
-- "Selecting a row opens record detail context and exposes the form selector for alternate forms."
+### 7. Use Audit History tab
 
-### Slide 6: Record Data tab
+Open `Audit History` to review changed-on/by, operation, and old/new values when available.
 
-Image: `docs/media/02-record-data-tab.png`
+![Audit History tab](media/03-audit-history-tab.png)
 
-On-screen text:
-- Key/value detail is visible.
-- Metadata label mapping is applied.
+### 8. Use Related tab
 
-Voice-over:
-- "Record Data shows field values with display labels where metadata mappings are available."
+Open `Related`, pick a relationship, and click `Load` (or `Reload`) to fetch related records on demand.
 
-### Slide 7: Audit History tab
+![Related tab](media/04-related-tab.png)
 
-Image: `docs/media/03-audit-history-tab.png`
+### 9. Toggle header and command bar
 
-On-screen text:
-- Changed On / Changed By
-- Operation, attribute, old/new values
+Use the up/down controls in the LTRDisplay panel to show or hide form chrome.
 
-Voice-over:
-- "Audit History displays event-style rows with operation, attribute changes, and old versus new values when provided by Dataverse audit."
+![Header shown](media/08-header-shown.png)
 
-### Slide 8: Related tab
+## Quick Behavior Notes
 
-Image: `docs/media/04-related-tab.png`
-
-On-screen text:
-- Relationships list is lazy-loaded.
-- Load action fetches related records on demand.
-
-Voice-over:
-- "Related records are intentionally lazy-loaded. Users choose a relationship and click Load or Reload only when needed."
-
-### Slide 9: Header shown via toggle
-
-Image: `docs/media/08-header-shown.png`
-
-On-screen text:
-- Up/down controls toggle form chrome.
-- Header and command bar can be restored.
-
-Voice-over:
-- "The control can hide form chrome by default and restore it with the toggle, using supported form APIs."
-
-## Suggested caption text
-
-- "LTRDisplay in action: archive fetch, cache replay, record details, audit history, and related navigation in one UCI workflow."
-
-## Gemini prompt (copy/paste)
-
-Create a 60-90 second product walkthrough video using 9 images in order. Use a calm technical voice-over style. Explain each screen briefly with one sentence, then transition to the next. Keep terminology consistent with Dataverse and UCI. End with a summary that highlights: Fetch Archive, Show Cached, Record Data, Audit History, Related, and form chrome toggle.
-
-Image order:
-1) docs/media/09-initial-form-load.png
-2) docs/media/05-fetch-archive-loading.png
-3) docs/media/06-show-cached-grid.png
-4) docs/media/01-grid-and-actions.png
-5) docs/media/07-form-switcher-menu.png
-6) docs/media/02-record-data-tab.png
-7) docs/media/03-audit-history-tab.png
-8) docs/media/04-related-tab.png
-9) docs/media/08-header-shown.png
+- `Fetch Archive` queries retained data and updates user cache.
+- `Show Cached` reads from cache and applies local filtering.
+- Related data is lazy-loaded only when requested.
+- Audit output depends on Dataverse audit data availability.
