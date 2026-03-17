@@ -4,7 +4,7 @@ import { Label } from '@fluentui/react/lib/Label';
 import { Pivot, PivotItem } from '@fluentui/react/lib/Pivot';
 import { DefaultButton } from '@fluentui/react/lib/Button';
 import { TextField } from '@fluentui/react/lib/TextField';
-import { IRelatedRelationship, IAuditHistoryGroup } from '../services/LtrService';
+import { IRelatedRelationship, IAuditHistoryItem } from '../services/LtrService';
 
 interface IDynamicFormProps {
     formData: any;
@@ -16,7 +16,7 @@ interface IDynamicFormProps {
     formOptions: { key: string; text: string }[];
     onFormChange: (formId: string) => void;
     selectedRecordId?: string;
-    auditHistory?: IAuditHistoryGroup[];
+    auditHistory?: IAuditHistoryItem[];
     auditLoading?: boolean;
     relatedDefinitions: IRelatedRelationship[];
     relatedData: Record<string, any[]>;
@@ -276,6 +276,20 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
         return rows.sort((a, b) => a.label.localeCompare(b.label));
     }, [formData, fieldLabelMap]);
 
+    const auditRows = React.useMemo(() => {
+        if (!auditHistory || auditHistory.length === 0) {
+            return [] as { item: IAuditHistoryItem; showEventColumns: boolean }[];
+        }
+
+        let previousEventKey = '';
+        return auditHistory.map((item) => {
+            const eventKey = item.eventKey || `${item.createdOn || ''}|${item.changedBy || ''}|${item.operation || ''}|${item.action || ''}`;
+            const showEventColumns = eventKey !== previousEventKey;
+            previousEventKey = eventKey;
+            return { item, showEventColumns };
+        });
+    }, [auditHistory]);
+
     if (!formData) return <div>No data selected</div>;
     if (!formDefinition || formDefinition.length === 0) {
         return (
@@ -413,34 +427,32 @@ export const DynamicForm: React.FC<IDynamicFormProps> = (props) => {
                         {auditLoading && <div>Loading audit history...</div>}
                         {!auditLoading && (!auditHistory || auditHistory.length === 0) && <div>No audit history found.</div>}
                         {!auditLoading && !!auditHistory && auditHistory.length > 0 && (
-                            <div className="ltr-audit-groups">
-                                {auditHistory.map(group => (
-                                    <div key={group.key} className="ltr-audit-group">
-                                        <div className="ltr-audit-group-header">
-                                            <strong>{group.createdOn ? new Date(group.createdOn).toLocaleString() : '--'}</strong>
-                                            <span>Changed By: {group.changedBy}</span>
-                                        </div>
-                                        <table className="ltr-record-data-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>Operation</th>
-                                                    <th>Action</th>
-                                                    <th>Details</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {group.items.map(item => (
-                                                    <tr key={item.id}>
-                                                        <td>{item.operation || '--'}</td>
-                                                        <td>{item.action || '--'}</td>
-                                                        <td>{item.details || '--'}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ))}
-                            </div>
+                            <table className="ltr-record-data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Changed On</th>
+                                        <th>Changed By</th>
+                                        <th>Operation</th>
+                                        <th>Action</th>
+                                        <th>Attribute</th>
+                                        <th>Old Value</th>
+                                        <th>New Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {auditRows.map(({ item, showEventColumns }) => (
+                                        <tr key={item.id} className={showEventColumns ? 'ltr-audit-group-start' : ''}>
+                                            <td>{showEventColumns ? (item.createdOn ? new Date(item.createdOn).toLocaleString() : '--') : ''}</td>
+                                            <td>{showEventColumns ? (item.changedBy || '--') : ''}</td>
+                                            <td>{showEventColumns ? (item.operation || '--') : ''}</td>
+                                            <td>{showEventColumns ? (item.action || '--') : ''}</td>
+                                            <td>{item.attribute || '--'}</td>
+                                            <td>{item.oldValue || '--'}</td>
+                                            <td>{item.newValue || '--'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         )}
                     </div>
                 </PivotItem>

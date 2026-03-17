@@ -42,18 +42,20 @@ export interface IRelatedRelationship {
 
 export interface IAuditHistoryItem {
     id: string;
+    eventKey: string;
     createdOn?: string;
     changedBy: string;
+    attribute: string;
+    oldValue: string;
+    newValue: string;
     operation?: string;
     action?: string;
-    details: string;
 }
 
-export interface IAuditHistoryGroup {
-    key: string;
-    createdOn?: string;
-    changedBy: string;
-    items: IAuditHistoryItem[];
+interface IParsedAuditAttributeChange {
+    attribute: string;
+    oldValue?: string;
+    newValue?: string;
 }
 
 const TECHNICAL_CHILD_ENTITIES = new Set([
@@ -250,6 +252,204 @@ export class LtrService {
             }
             return hydrated;
         });
+    }
+
+    private normalizeAuditAttributeName(candidate?: string): string | undefined {
+        const normalized = String(candidate || '').trim().toLowerCase();
+        if (!normalized) {
+            return undefined;
+        }
+
+        if (/^\d+$/.test(normalized)) {
+            return undefined;
+        }
+
+        if (!/^[a-z_][a-z0-9_.]*$/.test(normalized)) {
+            return undefined;
+        }
+
+        return normalized;
+    }
+
+    private normalizeAuditValue(value: unknown): string {
+        if (value === null || value === undefined) {
+            return '--';
+        }
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            return trimmed.length > 0 ? trimmed : '--';
+        }
+
+        if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+            return String(value);
+        }
+
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return '--';
+        }
+    }
+
+    private getObjectValueByCaseInsensitiveKeys(obj: any, keys: string[]): unknown {
+        if (!obj || typeof obj !== 'object') {
+            return undefined;
+        }
+
+        const objectKeys = Object.keys(obj);
+        const match = objectKeys.find((k) => keys.includes(k.toLowerCase()));
+        return match ? obj[match] : undefined;
+    }
+
+    private tryExtractChangesFromJson(input: string): IParsedAuditAttributeChange[] {
+        try {
+            const parsed = JSON.parse(input);
+            const changes = new Map<string, IParsedAuditAttributeChange>();
+
+            const upsert = (attributeRaw?: string, oldValue?: unknown, newValue?: unknown): void => {
+                const attribute = this.normalizeAuditAttributeName(attributeRaw);
+                if (!attribute) {
+                    return;
+                }
+
+                const existing = changes.get(attribute) || { attribute };
+                if (oldValue !== undefined && oldValue !== null) {
+                    existing.oldValue = this.normalizeAuditValue(oldValue);
+                }
+                if (newValue !== undefined && newValue !== null) {
+                    existing.newValue = this.normalizeAuditValue(newValue);
+                }
+                changes.set(attribute, existing);
+            };
+
+            const walk = (node: any): void => {
+                if (node === null || node === undefined) {
+                    return;
+                }
+
+                if (Array.isArray(node)) {
+                    node.forEach(walk);
+                    return;
+                }
+
+                if (typeof node === 'object') {
+                    const attribute = this.getObjectValueByCaseInsensitiveKeys(node, ['attribute', 'name', 'logicalname', 'field']);
+                    const oldValue = this.getObjectValueByCaseInsensitiveKeys(node, ['oldvalue', 'old', 'previousvalue', 'previous']);
+                    const newValue = this.getObjectValueByCaseInsensitiveKeys(node, ['newvalue', 'new', 'value', 'currentvalue', 'current']);
+                    if (typeof attribute === 'string') {
+                        upsert(attribute, oldValue, newValue);
+                    }
+
+                    Object.keys(node).forEach((key) => walk(node[key]));
+                    return;
+                }
+            };
+
+            walk(parsed);
+            return Array.from(changes.values());
+        } catch {
+            return [];
+        }
+    }
+
+    private extractChangedAttributes(changedata?: string, attributemask?: string): IParsedAuditAttributeChange[] {
+        const values = new Map<string, IParsedAuditAttributeChange>();
+
+        const upsert = (candidate?: string, oldValue?: unknown, newValue?: unknown): void => {
+            const normalized = this.normalizeAuditAttributeName(candidate);
+            if (!normalized) {
+                return;
+            }
+
+            const existing = values.get(normalized) || { attribute: normalized };
+            if (oldValue !== undefined && oldValue !== null) {
+                existing.oldValue = this.normalizeAuditValue(oldValue);
+            }
+            if (newValue !== undefined && newValue !== null) {
+                existing.newValue = this.normalizeAuditValue(newValue);
+            }
+            values.set(normalized, existing);
+        };
+
+        const changed = String(changedata || '').trim();
+        if (changed) {
+            const jsonChanges = this.tryExtractChangesFromJson(changed);
+            jsonChanges.forEach((entry) => upsert(entry.attribute, entry.oldValue, entry.newValue));
+
+            try {
+                const xmlDoc = new DOMParser().parseFromString(changed, 'text/xml');
+                const hasParserError = xmlDoc.getElementsByTagName('parsererror').length > 0;
+                if (!hasParserError) {
+                    const elements = Array.from(xmlDoc.getElementsByTagName('*'));
+                    elements.forEach((element) => {
+                        const attribute =
+                            element.getAttribute('name') ||
+                            element.getAttribute('logicalname') ||
+                            element.getAttribute('attribute') ||
+                            element.getAttribute('field') ||
+                            undefined;
+
+                        if (!attribute) {
+                            return;
+                        }
+
+                        const oldValue =
+                            element.getAttribute('oldvalue') ||
+                            element.getAttribute('old') ||
+                            element.getElementsByTagName('oldvalue')[0]?.textContent ||
+                            element.getElementsByTagName('old')[0]?.textContent ||
+                            undefined;
+
+                        const newValue =
+                            element.getAttribute('newvalue') ||
+                            element.getAttribute('new') ||
+                            element.getAttribute('value') ||
+                            element.getElementsByTagName('newvalue')[0]?.textContent ||
+                            element.getElementsByTagName('new')[0]?.textContent ||
+                            element.getElementsByTagName('value')[0]?.textContent ||
+                            undefined;
+
+                        upsert(attribute, oldValue, newValue);
+                    });
+                }
+            } catch {
+                // Ignore parser errors and fallback to regex extraction below.
+            }
+
+            const attributeRegex = /(?:name|logicalname|attribute|field)\s*=\s*["']([a-z_][a-z0-9_.]*)["']/gi;
+            let match: RegExpExecArray | null = attributeRegex.exec(changed);
+            while (match) {
+                upsert(match[1]);
+                match = attributeRegex.exec(changed);
+            }
+        }
+
+        const mask = String(attributemask || '').trim();
+        if (mask) {
+            mask.split(/[;,\n|]/g)
+                .map(token => token.trim())
+                .forEach(token => upsert(token));
+        }
+
+        return Array.from(values.values())
+            .sort((a, b) => a.attribute.localeCompare(b.attribute));
+    }
+
+    private isRetainOrDeleteAuditEvent(operation?: unknown, action?: unknown): boolean {
+        const op = this.normalizeAuditValue(operation).trim().toLowerCase();
+        const act = this.normalizeAuditValue(action).trim().toLowerCase();
+        const combined = `${op} ${act}`;
+
+        return (
+            combined.includes('delete') ||
+            combined.includes('retain') ||
+            combined.includes('retention')
+        );
     }
 
     private ensureRetainedFetch(fetchXml: string): string {
@@ -943,7 +1143,7 @@ export class LtrService {
         }
     }
 
-    public async getRecordAuditHistory(recordId: string, maxRows: number = 200): Promise<IAuditHistoryGroup[]> {
+    public async getRecordAuditHistory(recordId: string, maxRows: number = 200): Promise<IAuditHistoryItem[]> {
         try {
             const id = String(recordId || '').replace(/[{}]/g, '').toLowerCase();
             if (!id) {
@@ -954,12 +1154,13 @@ export class LtrService {
             const query =
                 `?$select=auditid,createdon,action,operation,attributemask,changedata,_userid_value` +
                 `&$filter=_objectid_value eq ${id}` +
-                `&$orderby=createdon desc`;
+                `&$orderby=createdon asc`;
 
             const result = await this._context.webAPI.retrieveMultipleRecords('audit', query, top);
             const rows = Array.isArray(result?.entities) ? result.entities : [];
 
-            const mapped: IAuditHistoryItem[] = rows.map((row: any) => {
+            const mapped: IAuditHistoryItem[] = [];
+            rows.forEach((row: any) => {
                 const changedBy =
                     row?.['_userid_value@OData.Community.Display.V1.FormattedValue'] ||
                     row?.['userid@OData.Community.Display.V1.FormattedValue'] ||
@@ -968,49 +1169,50 @@ export class LtrService {
 
                 const operation = row?.['operation@OData.Community.Display.V1.FormattedValue'] || row?.operation;
                 const action = row?.['action@OData.Community.Display.V1.FormattedValue'] || row?.action;
-                const details =
-                    (typeof row?.changedata === 'string' && row.changedata.trim().length > 0 ? row.changedata.trim() : '') ||
-                    (typeof row?.attributemask === 'string' && row.attributemask.trim().length > 0 ? row.attributemask.trim() : '') ||
-                    '--';
+                const isRetainDeleteEvent = this.isRetainOrDeleteAuditEvent(operation, action);
+                const attributes = isRetainDeleteEvent
+                    ? []
+                    : this.extractChangedAttributes(row?.changedata, row?.attributemask);
 
-                return {
-                    id: String(row?.auditid || `${row?.createdon || ''}|${changedBy}|${details}`),
-                    createdOn: row?.createdon,
-                    changedBy: String(changedBy),
-                    operation: operation !== undefined && operation !== null ? String(operation) : undefined,
-                    action: action !== undefined && action !== null ? String(action) : undefined,
-                    details
-                };
-            });
+                const baseId = String(row?.auditid || `${row?.createdon || ''}|${changedBy}`);
+                    if (attributes.length === 0) {
+                        mapped.push({
+                            id: `${baseId}|__event__`,
+                            eventKey: baseId,
+                            createdOn: row?.createdon,
+                            changedBy: String(changedBy),
+                        attribute: '--',
+                            oldValue: '--',
+                            newValue: '--',
+                            operation: operation !== undefined && operation !== null ? String(operation) : undefined,
+                            action: action !== undefined && action !== null ? String(action) : undefined
+                        });
+                        return;
+                    }
 
-            const groupedMap = new Map<string, IAuditHistoryGroup>();
-            mapped.forEach((item) => {
-                const key = `${item.createdOn || ''}|${item.changedBy}`;
-                const existing = groupedMap.get(key);
-                if (existing) {
-                    existing.items.push(item);
-                    return;
-                }
-
-                groupedMap.set(key, {
-                    key,
-                    createdOn: item.createdOn,
-                    changedBy: item.changedBy,
-                    items: [item]
+                attributes.forEach((attribute) => {
+                    mapped.push({
+                        id: `${baseId}|${attribute.attribute}`,
+                        eventKey: baseId,
+                        createdOn: row?.createdon,
+                        changedBy: String(changedBy),
+                        attribute: attribute.attribute,
+                        oldValue: attribute.oldValue || '--',
+                        newValue: attribute.newValue || '--',
+                        operation: operation !== undefined && operation !== null ? String(operation) : undefined,
+                        action: action !== undefined && action !== null ? String(action) : undefined
+                    });
                 });
             });
-
-            const groups = Array.from(groupedMap.values());
-            groups.sort((a, b) => String(b.createdOn || '').localeCompare(String(a.createdOn || '')));
 
             diag.info('Fetched audit history', {
                 entity: this._targetEntity,
                 recordId: id,
-                rowCount: mapped.length,
-                groupCount: groups.length
+                auditEventCount: rows.length,
+                changedAttributeCount: mapped.length
             });
 
-            return groups;
+            return mapped;
         } catch (error) {
             diag.error('Error fetching audit history', error, { entity: this._targetEntity, recordId });
             return [];

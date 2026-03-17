@@ -1,12 +1,11 @@
 import * as React from 'react';
 import { IInputs } from "../generated/ManifestTypes";
-import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship, IAuditHistoryGroup } from '../services/LtrService';
+import { LtrService, IViewDefinition, IFormDefinition, IRelatedRelationship, IAuditHistoryItem } from '../services/LtrService';
 import { XmlParserHelper, IGridColumn, IFormTab } from '../utils/XmlParser';
 import { DynamicGrid } from './DynamicGrid';
 import { DynamicForm } from './DynamicForm';
 import { ComboBox, IComboBoxOption } from '@fluentui/react/lib/ComboBox';
 import { Spinner, SpinnerSize } from '@fluentui/react/lib/Spinner';
-import { Toggle } from '@fluentui/react/lib/Toggle';
 import { PrimaryButton, DefaultButton } from '@fluentui/react/lib/Button';
 import { diag } from '../utils/Diagnostics';
 
@@ -33,7 +32,7 @@ interface IDetailContext {
     relatedDefinitions: IRelatedRelationship[];
     relatedData: Record<string, any[]>;
     relatedLoading: Record<string, boolean>;
-    auditHistory?: IAuditHistoryGroup[];
+    auditHistory?: IAuditHistoryItem[];
     auditLoading?: boolean;
 }
 
@@ -455,11 +454,11 @@ function applyViewFetchFilterLocally(rows: any[], fetchXml: string): any[] {
 }
 
 const App: React.FC<IAppProps> = (props) => {
-    const { context, targetEntity, isArchive } = props;
+    const { context, targetEntity } = props;
 
     const [entityOptions, setEntityOptions] = React.useState<IEntityOption[]>([]);
     const [selectedEntity, setSelectedEntity] = React.useState<string>(targetEntity || "");
-    const [archiveMode, setArchiveMode] = React.useState<boolean>(isArchive);
+    const [archiveMode] = React.useState<boolean>(true);
     const ltrService = React.useMemo(() => new LtrService(context, selectedEntity), [context, selectedEntity]);
     const [loading, setLoading] = React.useState<boolean>(false);
     const [views, setViews] = React.useState<IViewDefinition[]>([]);
@@ -478,6 +477,7 @@ const App: React.FC<IAppProps> = (props) => {
     const [viewMode, setViewMode] = React.useState<'GRID' | 'FORM'>('GRID');
     const [detailContext, setDetailContext] = React.useState<IDetailContext>();
     const [detailStack, setDetailStack] = React.useState<IDetailContext[]>([]);
+    const [chromeHidden, setChromeHidden] = React.useState<boolean>(true);
 
     const getCurrentUserCache = React.useCallback(() => {
         const userId = normalizeGuid(context.userSettings.userId) || 'anonymous';
@@ -637,7 +637,7 @@ const App: React.FC<IAppProps> = (props) => {
                 count: sourceRows.length
             });
         } catch (err) {
-            diag.error("View change failed", err, { viewId, isArchive, entity: selectedEntity });
+            diag.error("View change failed", err, { viewId, archiveMode, entity: selectedEntity });
         } finally {
             setLoading(false);
         }
@@ -934,9 +934,66 @@ const App: React.FC<IAppProps> = (props) => {
         loadAudit();
     }, [context, detailContext?.entity, detailContext?.recordId, detailContext?.auditHistory, detailContext?.auditLoading]);
 
-    const onToggleArchive = (_ev: any, checked?: boolean) => {
-        setArchiveMode(!!checked);
-    };
+    React.useEffect(() => {
+        const trySetChromeViaSupportedApi = (hidden: boolean): boolean => {
+            const visited = new Set<any>();
+            const frames: Window[] = [window];
+
+            let current: Window | null = window;
+            for (let depth = 0; depth < 3; depth += 1) {
+                try {
+                    if (!current?.parent || current.parent === current) {
+                        break;
+                    }
+                    frames.push(current.parent);
+                    current = current.parent;
+                } catch {
+                    break;
+                }
+            }
+
+            let applied = false;
+            frames.forEach((frame) => {
+                try {
+                    const xrm = (frame as any)?.Xrm;
+                    if (!xrm || visited.has(xrm)) {
+                        return;
+                    }
+                    visited.add(xrm);
+
+                    const page = xrm.Page;
+                    const headerSection = page?.ui?.headerSection;
+                    if (headerSection?.setBodyVisible) {
+                        headerSection.setBodyVisible(!hidden);
+                        applied = true;
+                    }
+                    if (headerSection?.setCommandBarVisible) {
+                        headerSection.setCommandBarVisible(!hidden);
+                        applied = true;
+                    }
+                    if (headerSection?.setTabNavigatorVisible) {
+                        headerSection.setTabNavigatorVisible(!hidden);
+                        applied = true;
+                    }
+                    if (page?.ui?.setFormCommandBarVisible) {
+                        page.ui.setFormCommandBarVisible(!hidden);
+                        applied = true;
+                    }
+                } catch {
+                    // Ignore unsupported frames/APIs and continue.
+                }
+            });
+
+            return applied;
+        };
+
+        const apiApplied = trySetChromeViaSupportedApi(chromeHidden);
+        if (apiApplied) {
+            diag.info('Applied form chrome visibility via supported Xrm API', { hidden: chromeHidden });
+        } else {
+            diag.info('Supported Xrm chrome API unavailable; no unsupported fallback is applied', { hidden: chromeHidden });
+        }
+    }, [chromeHidden]);
 
     const filteredGridData = React.useMemo(() => {
         const matchesQuery = (row: any, column: string, query: string): boolean => {
@@ -1004,7 +1061,32 @@ const App: React.FC<IAppProps> = (props) => {
 
     return (
         <div className="ltr-app">
+            <div className="ltr-chrome-toggle" role="group" aria-label="Form chrome toggle">
+                <button
+                    type="button"
+                    className="ltr-chrome-toggle-btn"
+                    aria-label="Hide header and command bar"
+                    title="Hide header and command bar"
+                    disabled={chromeHidden}
+                    onClick={() => setChromeHidden(true)}
+                >
+                    ↑
+                </button>
+                <button
+                    type="button"
+                    className="ltr-chrome-toggle-btn"
+                    aria-label="Show header and command bar"
+                    title="Show header and command bar"
+                    disabled={!chromeHidden}
+                    onClick={() => setChromeHidden(false)}
+                >
+                    ↓
+                </button>
+            </div>
+
             {loading && <Spinner size={SpinnerSize.large} label="Loading LTR Data..." />}
+
+            <div className="ltr-control-title">Explorer - LTR</div>
 
             <div className="ltr-header">
                 <ComboBox
@@ -1039,7 +1121,7 @@ const App: React.FC<IAppProps> = (props) => {
                 />
 
                 <PrimaryButton
-                    text="Apply Fetch Clause"
+                    text="Fetch Archive"
                     onClick={() => {
                         if (selectedViewId) {
                             handleViewChange(selectedViewId, views, true);
@@ -1050,7 +1132,7 @@ const App: React.FC<IAppProps> = (props) => {
                 />
 
                 <DefaultButton
-                    text="Show Cached Data"
+                    text="Show Cached"
                     onClick={() => {
                         if (selectedViewId) {
                             handleViewChange(selectedViewId, views, false, true);
@@ -1060,15 +1142,6 @@ const App: React.FC<IAppProps> = (props) => {
                     styles={{ root: { alignSelf: 'flex-end' } }}
                 />
 
-                <Toggle
-                    label="Data Source"
-                    onText="Archive (LTR)"
-                    offText="Active (Dataverse)"
-                    checked={archiveMode}
-                    onChange={onToggleArchive}
-                    disabled={loading}
-                    styles={{ root: { width: 180 } }}
-                />
             </div>
 
             <div className="ltr-content">
