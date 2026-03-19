@@ -795,22 +795,84 @@ export class LtrService {
     }
 
     private extractMissingAttributeFromError(error: unknown): string | undefined {
-        const raw = String((error as any)?.message || error || '').toLowerCase();
-        if (!raw) {
-            return undefined;
-        }
-
         const patterns = [
             /doesn't contain attribute\s+'([a-z0-9_]+)'/i,
             /does not contain attribute\s+'([a-z0-9_]+)'/i,
+            /doesn't contain attribute\s+with\s+name\s*=\s*'([a-z0-9_]+)'/i,
+            /does not contain attribute\s+with\s+name\s*=\s*'([a-z0-9_]+)'/i,
+            /attribute\s+with\s+name\s*=\s*'([a-z0-9_]+)'/i,
+            /attribute\s+with\s+name\s*=\s*"([a-z0-9_]+)"/i,
             /could not find a property named\s+'([a-z0-9_]+)'/i,
             /attribute\s+'([a-z0-9_]+)'\s+was not found/i
         ];
 
-        for (const pattern of patterns) {
-            const match = pattern.exec(raw);
-            if (match?.[1]) {
-                return String(match[1]).toLowerCase();
+        const texts = new Set<string>();
+        const queue: any[] = [error];
+        let guard = 0;
+
+        while (queue.length > 0 && guard < 30) {
+            guard++;
+            const current = queue.shift();
+            if (current === null || current === undefined) {
+                continue;
+            }
+
+            if (typeof current === 'string') {
+                texts.add(current);
+                continue;
+            }
+
+            if (typeof current === 'number' || typeof current === 'boolean') {
+                texts.add(String(current));
+                continue;
+            }
+
+            if (typeof current === 'object') {
+                const candidateKeys = [
+                    'message',
+                    'responseText',
+                    'statusText',
+                    'errorMessage',
+                    'body',
+                    'raw',
+                    'detail',
+                    'details'
+                ];
+
+                candidateKeys.forEach((key) => {
+                    const value = current?.[key];
+                    if (value !== undefined && value !== null) {
+                        queue.push(value);
+                    }
+                });
+
+                const nestedError = current?.error;
+                if (nestedError !== undefined && nestedError !== null) {
+                    queue.push(nestedError);
+                }
+
+                try {
+                    const serialized = JSON.stringify(current);
+                    if (serialized && serialized !== '{}') {
+                        texts.add(serialized);
+                    }
+                } catch {
+                    // Ignore circular serialization issues.
+                }
+            }
+        }
+
+        for (const text of texts) {
+            const raw = String(text || '').toLowerCase();
+            if (!raw) {
+                continue;
+            }
+
+            for (const pattern of patterns) {
+                const match = pattern.exec(raw);
+                if (match?.[1]) {
+                    return String(match[1]).toLowerCase();
+                }
             }
         }
 
