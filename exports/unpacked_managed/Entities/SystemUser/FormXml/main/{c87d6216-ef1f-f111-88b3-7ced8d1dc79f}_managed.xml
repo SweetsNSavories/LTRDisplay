@@ -237,19 +237,8 @@
               <dependencies />
             </Handler>
           </InternalHandlers>
-          <Handlers>
-            <Handler functionName="OmniChannelPackage.OmniChannelUser.Instance.SetDefaultCapacityAndDefaultPresence" libraryName="msdyn_userSettings.js" handlerUniqueId="{61b9a5cd-934d-ce6e-9e4c-3b51c2636ab8}" enabled="true" parameters="" passExecutionContext="true" />
-            <Handler functionName="OmniChannelPackage.OmniChannelUser.Instance.onLoadSetValue" libraryName="msdyn_userSettings.js" handlerUniqueId="{7D305C37-8147-4EFE-9472-6D358AF75453}" enabled="true" parameters="" passExecutionContext="true" />
-            <Handler functionName="OmniChannelPackage.BotUser.onLoad" libraryName="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" handlerUniqueId="{33D34034-4D81-4C73-9A95-697B8B8FC0C2}" enabled="true" parameters="" passExecutionContext="true" />
-            <Handler functionName="OCBaseURBase.msdyn_capacityProfileSubgridActions.hideAndFilterSubgridOnLoad" libraryName="msdyn_capacityprofileSubgridActions.js" handlerUniqueId="{1e912873-63de-41ca-b529-e5d49b39693b}" enabled="true" parameters="" passExecutionContext="true" />
-            <Handler functionName="OmniChannelPackage.OmniChannelUser.Instance.HideOrShowOmnichannelTab" libraryName="msdyn_userSettings.js" handlerUniqueId="{146a61cd-2aae-7bd2-79ba-4a2bd547a209}" enabled="true" parameters="" passExecutionContext="true" />
-            <Handler functionName="AgentGroupManager.SubgridActions.DisplayLangAndRegionSections" libraryName="msdyn_agentAttributesSubgridActions.js" handlerUniqueId="{16eac9b2-13cf-458a-bd8c-b97c907fee7e}" enabled="true" parameters="" passExecutionContext="true" />
-          </Handlers>
         </event>
         <event name="onsave" application="false" active="false">
-          <Handlers>
-            <Handler functionName="OmniChannelPackage.OmniChannelUser.Instance.SetDefaultCapacityAndDefaultPresence" libraryName="msdyn_userSettings.js" handlerUniqueId="{3c4e62c3-8d01-7b7b-7d31-a2c1be6a8dc9}" enabled="true" parameters="" passExecutionContext="true" />
-          </Handlers>
         </event>
       </events>
       <Navigation>
@@ -548,12 +537,7 @@
           </customControl>
         </controlDescription>
       </controlDescriptions>
-      <formLibraries>
-        <Library name="msdyn_userSettings.js" libraryUniqueId="{4ab48be7-1e40-44d6-d1b7-cd6409921125}" />
-        <Library name="msdyn_capacityprofileSubgridActions.js" libraryUniqueId="{03846787-53c2-4aed-905b-5ff8ab19349c}" />
-        <Library name="msdyn_agentAttributesSubgridActions.js" libraryUniqueId="{32a52661-69b0-b6d9-33bc-3dac6c15b047}" />
-        <Library name="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" libraryUniqueId="{63fc4286-20f8-491c-ba10-282241efa31e}" />
-      </formLibraries>
+      <formLibraries />
       <header id="{75182a35-edd3-4076-a990-6e6592a60336}" celllabelposition="Top" columns="111" labelwidth="115" celllabelalignment="Left">
         <rows>
           <row>

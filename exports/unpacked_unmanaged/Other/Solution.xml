@@ -88,31 +88,6 @@
         <Required type="1" schemaName="systemuser" displayName="SystemUser" parentSchemaName="" solution="Active (1.0)" />
         <Dependent type="1" schemaName="systemuser" displayName="SystemUser" />
       </MissingDependency>
-      <MissingDependency>
-        <Required type="61" schemaName="msdyn_agentAttributesSubgridActions.js" displayName="msdyn_agentAttributesSubgridActions.js" solution="msdyn_AgentGroupManager (1.5.26024.1027)">
-          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
-        </Required>
-        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
-      </MissingDependency>
-      <MissingDependency>
-        <Required type="61" schemaName="msdyn_capacityprofileSubgridActions.js" displayName="msdyn_capacityprofileSubgridActions.js" solution="OCBaseURBase (1.5.26024.1027)">
-          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
-        </Required>
-        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
-      </MissingDependency>
-      <MissingDependency>
-        <Required type="61" schemaName="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" displayName="msdyn_OmnichannelBotEnabler/msdyn_BotUser.js" solution="msdyn_OmnichannelBotEnablerPatch (1.5.27.8)">
-          <package appName="OmnichannelPrime" version="1.10.0.37">msdyn_ContactCenterEnablement (1.10.0.37)</package>
-          <package appName="OmnichannelPrime" version="1.10.0.23">msdyn_OmnichannelRealtimeMonitoring (1.10.0.23)</package>
-        </Required>
-        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
-      </MissingDependency>
-      <MissingDependency>
-        <Required type="61" schemaName="msdyn_userSettings.js" displayName="msdyn_userSettings.js" solution="OmnichannelBase (1.10.0.138)">
-          <package appName="UnifiedRoutingPrime" version="1.5.27.182">UnifiedRoutingPrimeAnchor (1.5.27.182)</package>
-        </Required>
-        <Dependent type="60" displayName="LTRDisplay Main Form" parentDisplayName="User" id="{c87d6216-ef1f-f111-88b3-7ced8d1dc79f}" />
-      </MissingDependency>
     </MissingDependencies>
   </SolutionManifest>
 </ImportExportXml>
