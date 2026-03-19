@@ -1311,8 +1311,18 @@ export class LtrService {
     public async getRelatedRecords(relationship: IRelatedRelationship, parentId: string, isArchive: boolean, maxRows: number = 250): Promise<any[]> {
         try {
             const readableAttributeNames = await this.getReadableAttributeNames(relationship.childEntity);
-            const fetchXml = this.buildRelatedFetch(relationship, parentId, maxRows, readableAttributeNames);
-            const effectiveFetch = isArchive ? this.ensureRetainedFetch(fetchXml) : fetchXml;
+            const childEntityMetadata = await this.getEntityMetadata(relationship.childEntity);
+            const childPrimaryId = childEntityMetadata?.PrimaryIdAttribute || `${relationship.childEntity}id`;
+            const lookupAttribute = String(relationship.childLookupAttribute || '').toLowerCase();
+
+            let workingAttributes = readableAttributeNames.slice();
+            if (childPrimaryId && !workingAttributes.includes(childPrimaryId)) {
+                workingAttributes.push(childPrimaryId);
+            }
+            if (lookupAttribute && !workingAttributes.includes(lookupAttribute)) {
+                workingAttributes.push(lookupAttribute);
+            }
+
             diag.info("Fetching related records", {
                 relationship: relationship.schemaName,
                 childEntity: relationship.childEntity,
@@ -1320,8 +1330,59 @@ export class LtrService {
                 isArchive,
                 maxRows
             });
-            const result = await this._context.webAPI.retrieveMultipleRecords(relationship.childEntity, `?fetchXml=${encodeURIComponent(effectiveFetch)}`, Math.min(Math.max(maxRows, 1), 5000));
-            const hydrated = this.hydrateRowsWithAllAttributeKeys(result.entities || [], readableAttributeNames);
+
+            let rows: any[] = [];
+            let lastError: unknown = undefined;
+
+            for (let attempt = 1; attempt <= MAX_LTR_FETCH_ATTEMPTS; attempt++) {
+                const fetchXml = this.buildRelatedFetch(relationship, parentId, maxRows, workingAttributes);
+                const effectiveFetch = isArchive ? this.ensureRetainedFetch(fetchXml) : fetchXml;
+
+                try {
+                    rows = await this.retrieveAllPages(relationship.childEntity, effectiveFetch, Math.min(Math.max(maxRows, 1), 5000));
+                    lastError = undefined;
+                    break;
+                } catch (attemptError) {
+                    lastError = attemptError;
+                    const missingAttribute = this.extractMissingAttributeFromError(attemptError);
+
+                    if (!missingAttribute) {
+                        throw attemptError;
+                    }
+
+                    if (lookupAttribute && missingAttribute === lookupAttribute) {
+                        diag.info("Related fetch lookup attribute missing in this environment; skipping relationship", {
+                            relationship: relationship.schemaName,
+                            childEntity: relationship.childEntity,
+                            lookupAttribute,
+                            attempt
+                        });
+                        rows = [];
+                        lastError = undefined;
+                        break;
+                    }
+
+                    if (workingAttributes.includes(missingAttribute)) {
+                        workingAttributes = workingAttributes.filter(a => a !== missingAttribute);
+                        diag.info("Retrying related fetch after removing missing projection attribute", {
+                            relationship: relationship.schemaName,
+                            childEntity: relationship.childEntity,
+                            missingAttribute,
+                            attempt,
+                            remainingAttributeCount: workingAttributes.length
+                        });
+                        continue;
+                    }
+
+                    throw attemptError;
+                }
+            }
+
+            if (lastError) {
+                throw lastError;
+            }
+
+            const hydrated = this.hydrateRowsWithAllAttributeKeys(rows || [], readableAttributeNames);
             diag.info("Fetched related records", {
                 relationship: relationship.schemaName,
                 childEntity: relationship.childEntity,
