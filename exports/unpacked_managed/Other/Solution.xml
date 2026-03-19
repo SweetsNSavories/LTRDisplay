@@ -81,7 +81,6 @@
     </Publisher>
     <RootComponents>
       <RootComponent type="1" schemaName="systemuser" behavior="2" />
-      <RootComponent type="66" schemaName="inapp_InAppNotification.NotificationControl" behavior="0" />
       <RootComponent type="66" schemaName="ltr_LTRDisplay.LTRDisplayControl" behavior="0" />
     </RootComponents>
     <MissingDependencies>
