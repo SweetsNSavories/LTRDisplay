@@ -87,6 +87,8 @@ const INTERNAL_RETENTION_ENTITIES = new Set([
     "retentionfailuredetail"
 ]);
 
+const MAX_LTR_FETCH_ATTEMPTS = 12;
+
 export class LtrService {
     private _context: ComponentFramework.Context<IInputs>;
     private _targetEntity: string;
@@ -94,6 +96,7 @@ export class LtrService {
     private _archivalEnabledCache: Record<string, boolean>;
     private _attributeNamesCache: Record<string, string[]>;
     private _searchableAttributesCache: Record<string, ISearchableAttribute[]>;
+    private _entityMetadataCache: Record<string, IEntityMetadata>;
 
     constructor(context: ComponentFramework.Context<IInputs>, targetEntity: string) {
         this._context = context;
@@ -102,7 +105,48 @@ export class LtrService {
         this._archivalEnabledCache = {};
         this._attributeNamesCache = {};
         this._searchableAttributesCache = {};
+        this._entityMetadataCache = {};
         diag.info(`LtrService initialized for entity '${targetEntity}'`);
+    }
+
+    private async getEntityMetadata(entityLogicalName?: string): Promise<IEntityMetadata | undefined> {
+        const entity = (entityLogicalName || this._targetEntity || '').toLowerCase();
+        if (!entity) {
+            return undefined;
+        }
+
+        if (this._entityMetadataCache[entity]) {
+            return this._entityMetadataCache[entity];
+        }
+
+        try {
+            const encoded = entity.replace(/'/g, "''");
+            const metadata = await this.fetchMetadata(
+                `EntityDefinitions(LogicalName='${encoded}')?` +
+                `$select=LogicalName,PrimaryIdAttribute,PrimaryNameAttribute,DisplayName`
+            );
+
+            const displayName =
+                metadata?.DisplayName?.UserLocalizedLabel?.Label ||
+                metadata?.DisplayName?.LocalizedLabels?.[0]?.Label ||
+                entity;
+
+            const resolved: IEntityMetadata = {
+                LogicalName: String(metadata?.LogicalName || entity).toLowerCase(),
+                DisplayName: String(displayName),
+                PrimaryIdAttribute: String(metadata?.PrimaryIdAttribute || `${entity}id`).toLowerCase(),
+                PrimaryNameAttribute: String(metadata?.PrimaryNameAttribute || '').toLowerCase()
+            };
+
+            this._entityMetadataCache[entity] = resolved;
+            return resolved;
+        } catch (error) {
+            diag.info('Failed to load entity metadata', {
+                entity,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return undefined;
+        }
     }
 
     private isInternalRetentionEntity(entityLogicalName: string): boolean {
@@ -736,9 +780,9 @@ export class LtrService {
         return [];
     }
 
-    private ensurePrimaryIdAttribute(fetchXml: string): string {
+    private ensurePrimaryIdAttribute(fetchXml: string, primaryIdAttribute: string): string {
         if (!fetchXml) return fetchXml;
-        const primaryId = `${this._targetEntity}id`;
+        const primaryId = String(primaryIdAttribute || '').toLowerCase().trim() || `${this._targetEntity}id`;
         const hasPrimaryId = new RegExp(`<attribute\\s+name=["']${primaryId}["']`, "i").test(fetchXml);
         if (hasPrimaryId) return fetchXml;
 
@@ -748,6 +792,119 @@ export class LtrService {
         }
 
         return fetchXml;
+    }
+
+    private extractMissingAttributeFromError(error: unknown): string | undefined {
+        const raw = String((error as any)?.message || error || '').toLowerCase();
+        if (!raw) {
+            return undefined;
+        }
+
+        const patterns = [
+            /doesn't contain attribute\s+'([a-z0-9_]+)'/i,
+            /does not contain attribute\s+'([a-z0-9_]+)'/i,
+            /could not find a property named\s+'([a-z0-9_]+)'/i,
+            /attribute\s+'([a-z0-9_]+)'\s+was not found/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = pattern.exec(raw);
+            if (match?.[1]) {
+                return String(match[1]).toLowerCase();
+            }
+        }
+
+        return undefined;
+    }
+
+    private async retrieveAllPages(entity: string, effectiveFetch: string, maxRows: number): Promise<any[]> {
+        const pageSize = Math.min(Math.max(maxRows, 1), 5000);
+        let result = await this._context.webAPI.retrieveMultipleRecords(entity, `?fetchXml=${encodeURIComponent(effectiveFetch)}`, pageSize);
+        const allRows = [...(result.entities || [])];
+
+        let nextLink = (result as any).nextLink || (result as any)["@odata.nextLink"];
+        while (nextLink && allRows.length < maxRows) {
+            const remaining = maxRows - allRows.length;
+            const nextOptions = typeof nextLink === "string" && nextLink.includes("?")
+                ? `?${nextLink.split("?")[1]}`
+                : nextLink;
+
+            result = await this._context.webAPI.retrieveMultipleRecords(
+                entity,
+                nextOptions,
+                Math.min(remaining, 5000)
+            );
+
+            allRows.push(...(result.entities || []));
+            nextLink = (result as any).nextLink || (result as any)["@odata.nextLink"];
+        }
+
+        return allRows.slice(0, maxRows);
+    }
+
+    private removeAttributeFromFetch(fetchXml: string, attributeName: string): string {
+        if (!fetchXml || !attributeName) {
+            return fetchXml;
+        }
+
+        const target = attributeName.toLowerCase().trim();
+        if (!target) {
+            return fetchXml;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(fetchXml, "text/xml");
+            const parseError = doc.getElementsByTagName("parsererror");
+            if (parseError && parseError.length > 0) {
+                throw new Error("Invalid FetchXML parser result");
+            }
+
+            const removeByTagAndAttribute = (tagName: string, attrName: string): number => {
+                const nodes = Array.from(doc.getElementsByTagName(tagName));
+                let removed = 0;
+                for (let i = nodes.length - 1; i >= 0; i--) {
+                    const node = nodes[i];
+                    const value = String(node.getAttribute(attrName) || "").toLowerCase();
+                    if (value === target && node.parentNode) {
+                        node.parentNode.removeChild(node);
+                        removed++;
+                    }
+                }
+                return removed;
+            };
+
+            const removedAttributes = removeByTagAndAttribute("attribute", "name");
+            const removedConditions = removeByTagAndAttribute("condition", "attribute");
+            const removedOrders = removeByTagAndAttribute("order", "attribute");
+
+            const filters = Array.from(doc.getElementsByTagName("filter"));
+            for (let i = filters.length - 1; i >= 0; i--) {
+                const filter = filters[i];
+                const hasElementChildren = Array.from(filter.childNodes).some((n: any) => n.nodeType === 1);
+                if (!hasElementChildren && filter.parentNode) {
+                    filter.parentNode.removeChild(filter);
+                }
+            }
+
+            const serializer = new XMLSerializer();
+            const sanitized = serializer.serializeToString(doc);
+            diag.info("Removed failing attribute references from FetchXML", {
+                entity: this._targetEntity,
+                attribute: target,
+                removedAttributes,
+                removedConditions,
+                removedOrders
+            });
+            return sanitized;
+        } catch {
+            const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            let sanitized = fetchXml;
+            sanitized = sanitized.replace(new RegExp(`<attribute\\b[^>]*\\bname=["']${escaped}["'][^>]*/>`, "gi"), "");
+            sanitized = sanitized.replace(new RegExp(`<condition\\b[^>]*\\battribute=["']${escaped}["'][^>]*/>`, "gi"), "");
+            sanitized = sanitized.replace(new RegExp(`<order\\b[^>]*\\battribute=["']${escaped}["'][^>]*/>`, "gi"), "");
+            return sanitized;
+        }
     }
 
     private expandFetchToExplicitColumns(fetchXml: string, attributeNames: string[]): string {
@@ -994,21 +1151,82 @@ export class LtrService {
     public async getLtrData(fetchXml: string, isArchive: boolean, maxRows: number = 5000): Promise<any[]> {
         try {
             diag.info("Fetching LTR data", { entity: this._targetEntity, isArchive });
+            const entityMetadata = await this.getEntityMetadata(this._targetEntity);
             const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
-            const expanded = this.expandFetchToExplicitColumns(fetchXml, readableAttributeNames);
-            const withPrimaryId = this.ensurePrimaryIdAttribute(expanded);
-            const effectiveFetch = isArchive
-                ? this.ensureRetainedFetch(this.sanitizeFetchForRetainedStore(withPrimaryId, readableAttributeNames))
-                : withPrimaryId;
-            diag.info("LTR FetchXML diagnostics", {
-                entity: this._targetEntity,
-                isArchive,
-                readableAttributeCount: readableAttributeNames.length,
-                originalFetchXml: fetchXml,
-                expandedFetchXml: expanded,
-                fetchWithPrimaryId: withPrimaryId,
-                effectiveFetchXml: effectiveFetch
-            });
+            const primaryIdAttribute = entityMetadata?.PrimaryIdAttribute || `${this._targetEntity}id`;
+
+            let workingAttributes = readableAttributeNames.slice();
+            if (primaryIdAttribute && !workingAttributes.includes(primaryIdAttribute)) {
+                workingAttributes.push(primaryIdAttribute);
+            }
+
+            let workingFetchXml = fetchXml;
+
+            let allRows: any[] = [];
+            let lastError: unknown = undefined;
+            let diagnosticsSnapshot: any = undefined;
+
+            for (let attempt = 1; attempt <= MAX_LTR_FETCH_ATTEMPTS; attempt++) {
+                const expanded = this.expandFetchToExplicitColumns(workingFetchXml, workingAttributes);
+                const withPrimaryId = this.ensurePrimaryIdAttribute(expanded, primaryIdAttribute);
+                const effectiveFetch = isArchive
+                    ? this.ensureRetainedFetch(this.sanitizeFetchForRetainedStore(withPrimaryId, workingAttributes))
+                    : withPrimaryId;
+
+                diagnosticsSnapshot = {
+                    entity: this._targetEntity,
+                    isArchive,
+                    attempt,
+                    maxAttempts: MAX_LTR_FETCH_ATTEMPTS,
+                    readableAttributeCount: readableAttributeNames.length,
+                    workingAttributeCount: workingAttributes.length,
+                    primaryIdAttribute,
+                    originalFetchXml: workingFetchXml,
+                    expandedFetchXml: expanded,
+                    fetchWithPrimaryId: withPrimaryId,
+                    effectiveFetchXml: effectiveFetch
+                };
+
+                diag.info("LTR FetchXML diagnostics", diagnosticsSnapshot);
+
+                try {
+                    allRows = await this.retrieveAllPages(this._targetEntity, effectiveFetch, maxRows);
+                    lastError = undefined;
+                    break;
+                } catch (attemptError) {
+                    lastError = attemptError;
+                    const missingAttribute = this.extractMissingAttributeFromError(attemptError);
+
+                    if (missingAttribute && workingAttributes.includes(missingAttribute)) {
+                        workingAttributes = workingAttributes.filter(a => a !== missingAttribute);
+                        workingFetchXml = this.removeAttributeFromFetch(workingFetchXml, missingAttribute);
+                        diag.info("Retrying LTR fetch after removing missing attribute from projection", {
+                            entity: this._targetEntity,
+                            attempt,
+                            missingAttribute,
+                            remainingAttributeCount: workingAttributes.length
+                        });
+                        continue;
+                    }
+
+                    if (missingAttribute) {
+                        workingFetchXml = this.removeAttributeFromFetch(workingFetchXml, missingAttribute);
+                        diag.info("Retrying LTR fetch after removing missing attribute from fetch clauses", {
+                            entity: this._targetEntity,
+                            attempt,
+                            missingAttribute,
+                            remainingAttributeCount: workingAttributes.length
+                        });
+                        continue;
+                    }
+
+                    throw attemptError;
+                }
+            }
+
+            if (lastError) {
+                throw lastError;
+            }
             // NOTE: If specific API is needed for LTR, replace this logic.
             // Some LTR implementations use a custom message or specific headers.
             // Assuming the fetchXml provided by the View is sufficient or needs modification.
@@ -1020,27 +1238,6 @@ export class LtrService {
             // in all versions. We might need specific implementation.
 
             // For standard FetchXML usage:
-            const pageSize = Math.min(Math.max(maxRows, 1), 5000);
-            let result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(effectiveFetch)}`, pageSize);
-            const allRows = [...(result.entities || [])];
-
-            let nextLink = (result as any).nextLink || (result as any)["@odata.nextLink"];
-            while (nextLink && allRows.length < maxRows) {
-                const remaining = maxRows - allRows.length;
-                const nextOptions = typeof nextLink === "string" && nextLink.includes("?")
-                    ? `?${nextLink.split("?")[1]}`
-                    : nextLink;
-
-                result = await this._context.webAPI.retrieveMultipleRecords(
-                    this._targetEntity,
-                    nextOptions,
-                    Math.min(remaining, 5000)
-                );
-
-                allRows.push(...(result.entities || []));
-                nextLink = (result as any).nextLink || (result as any)["@odata.nextLink"];
-            }
-
             const capped = allRows.slice(0, maxRows);
             const hydrated = this.hydrateRowsWithAllAttributeKeys(capped, readableAttributeNames);
 
