@@ -134,7 +134,7 @@ export class LtrService {
             const resolved: IEntityMetadata = {
                 LogicalName: String(metadata?.LogicalName || entity).toLowerCase(),
                 DisplayName: String(displayName),
-                PrimaryIdAttribute: String(metadata?.PrimaryIdAttribute || `${entity}id`).toLowerCase(),
+                PrimaryIdAttribute: String(metadata?.PrimaryIdAttribute || LtrService.defaultPrimaryIdAttributeForEntity(entity)).toLowerCase(),
                 PrimaryNameAttribute: String(metadata?.PrimaryNameAttribute || '').toLowerCase()
             };
 
@@ -513,6 +513,17 @@ export class LtrService {
             return "activityid";
         }
         return `${this._targetEntity}id`;
+    }
+
+    private static defaultPrimaryIdAttributeForEntity(entityLogicalName: string): string {
+        const logical = String(entityLogicalName || '').toLowerCase();
+        const activityEntities = new Set([
+            "email", "task", "appointment", "phonecall", "letter", "fax", "campaignresponse", "serviceappointment"
+        ]);
+        if (activityEntities.has(logical)) {
+            return "activityid";
+        }
+        return `${logical}id`;
     }
 
     private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number, attributeNames: string[]): string {
