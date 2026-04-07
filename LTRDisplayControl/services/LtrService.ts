@@ -40,6 +40,16 @@ export class LtrService {
         return updated || fetchXml;
     }
 
+    private defaultPrimaryIdAttribute(): string {
+        const activityEntities = new Set([
+            "email", "task", "appointment", "phonecall", "letter", "fax", "campaignresponse", "serviceappointment"
+        ]);
+        if (activityEntities.has((this._targetEntity || "").toLowerCase())) {
+            return "activityid";
+        }
+        return `${this._targetEntity}id`;
+    }
+
     /**
      * Fetches the system views for the target entity
      */
@@ -127,15 +137,16 @@ export class LtrService {
     /**
      * Fetch a single record's details
      */
-    public async getRecordDetails(id: string, isArchive: boolean = false): Promise<any> {
+        public async getRecordDetails(id: string, isArchive: boolean = false, idAttribute?: string): Promise<any> {
         try {
             if (isArchive) {
+                                const effectiveIdAttribute = idAttribute || this.defaultPrimaryIdAttribute();
                 // To fetch a single retained record, we must use FetchXML with datasource="retained"
                 const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained">
                   <entity name="${this._targetEntity}">
                     <all-attributes />
                     <filter type="and">
-                      <condition attribute="${this._targetEntity}id" operator="eq" value="${id}" />
+                                            <condition attribute="${effectiveIdAttribute}" operator="eq" value="${id}" />
                     </filter>
                   </entity>
                 </fetch>`;
@@ -147,7 +158,7 @@ export class LtrService {
 
                 const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
                 const record = result.entities.length > 0 ? result.entities[0] : null;
-                diag.info("Fetched retained record", { entity: this._targetEntity, id, found: !!record });
+                diag.info("Fetched retained record", { entity: this._targetEntity, id, idAttribute: effectiveIdAttribute, found: !!record });
                 return record;
             }
 

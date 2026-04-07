@@ -12,19 +12,22 @@ interface IDynamicGridProps {
 export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
     const { columns, data, onRecordSelect } = props;
 
+    const findRecordId = (item: any): string | null => {
+        if (!item || typeof item !== 'object') return null;
+
+        const keys = Object.keys(item);
+        const direct = keys.find(k => /id$/i.test(k) && typeof item[k] === 'string' && /^[0-9a-fA-F-]{36}$/.test(item[k]));
+        if (direct) return item[direct];
+
+        return null;
+    };
+
     const _selection = new Selection({
         onSelectionChanged: () => {
             const selected = _selection.getSelection();
             if (selected.length > 0) {
                 const item = selected[0] as any;
-                // Assuming entity logical name is standard, the ID field is usually entityid but we need to know the primary key
-                // For simplified PCF usage, we often grab the first GUID-like field or pass primary key name
-                // Here we will try to find a field ending in 'id' or use a strict contract
-                // For now, let's assume the data object has an 'id' property or similar mapped by the service
-                // PRO TIP: The WebAPI response usually has entityid as the primary key property, e.g. 'incidentid'
-                // effectively we pass the whole object back or just the ID if we can guess it.
-                // Let's pass the whole item and let App handle extraction or guess the ID.
-                const possibleId = item.id || item.incidentid; // Fallback for specific case, will refine
+                const possibleId = findRecordId(item);
                 if (possibleId) {
                     diag.info("Grid row selected", { possibleId });
                     onRecordSelect(possibleId);

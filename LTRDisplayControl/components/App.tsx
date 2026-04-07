@@ -47,6 +47,30 @@ const App: React.FC<IAppProps> = (props) => {
     const [viewMode, setViewMode] = React.useState<'GRID' | 'FORM'>('GRID');
     const [selectedRecord, setSelectedRecord] = React.useState<any>(null);
 
+    const isGuid = (value: unknown): value is string => {
+        return typeof value === "string" && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(value);
+    };
+
+    const findIdAttributeFromRecord = (record: Record<string, unknown> | null | undefined, idValue?: string): string | undefined => {
+        if (!record || typeof record !== "object") return undefined;
+
+        const keys = Object.keys(record).filter(k => /id$/i.test(k) && !k.startsWith("_") && !k.includes("@"));
+        if (idValue) {
+            const matchingKey = keys.find(k => record[k] === idValue);
+            if (matchingKey) return matchingKey;
+        }
+
+        return keys.find(k => isGuid(record[k]));
+    };
+
+    const findRecordById = (id: string): Record<string, unknown> | undefined => {
+        return gridData.find(r => {
+            if (!r || typeof r !== "object") return false;
+            const keys = Object.keys(r).filter(k => /id$/i.test(k) && !k.startsWith("_") && !k.includes("@"));
+            return keys.some(k => r[k] === id);
+        }) as Record<string, unknown> | undefined;
+    };
+
     // Parse entity list input
     React.useEffect(() => {
         const parsed = (ltrEntities || "").split(/[,;\n]/)
@@ -146,16 +170,25 @@ const App: React.FC<IAppProps> = (props) => {
     const handleRecordSelect = async (id: string) => {
         try {
             diag.info("Record selected", { id });
-            let record = gridData.find(r => r[targetEntity + 'id'] === id || r.id === id); // naive check
+            let record = findRecordById(id);
+            let idAttribute = findIdAttributeFromRecord(record, id);
 
             if (!record) {
                 diag.info("Record not in grid, fetching details", { id, archiveMode });
-                record = await ltrService.getRecordDetails(id, archiveMode);
+                record = await ltrService.getRecordDetails(id, archiveMode, idAttribute);
             }
 
             if (!record) {
                 diag.error("Record not found", null, { id, isArchive });
                 return;
+            }
+
+            if (!idAttribute) {
+                idAttribute = findIdAttributeFromRecord(record, id);
+            }
+
+            if (!idAttribute && archiveMode) {
+                diag.error("Unable to determine primary id attribute for archive fetch", null, { entity: selectedEntity, id });
             }
 
             // Ensure form definition is parsed
@@ -165,7 +198,7 @@ const App: React.FC<IAppProps> = (props) => {
 
             setSelectedRecord(record);
             setViewMode('FORM');
-            diag.info("Form view opened", { recordId: id, archiveMode });
+            diag.info("Form view opened", { recordId: id, idAttribute, archiveMode });
         } catch (err) {
             diag.error("Record select failed", err, { id, archiveMode });
         }
