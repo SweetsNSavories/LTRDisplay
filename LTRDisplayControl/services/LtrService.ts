@@ -513,6 +513,8 @@ export class LtrService {
             return "activityid";
         }
         return `${this._targetEntity}id`;
+    }
+
     private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number, attributeNames: string[]): string {
         const id = parentId.replace(/[{}]/g, "");
         const projection = attributeNames.length > 0
@@ -790,7 +792,7 @@ export class LtrService {
 
     private ensurePrimaryIdAttribute(fetchXml: string, primaryIdAttribute: string): string {
         if (!fetchXml) return fetchXml;
-        const primaryId = String(primaryIdAttribute || '').toLowerCase().trim() || `${this._targetEntity}id`;
+        const primaryId = String(primaryIdAttribute || '').toLowerCase().trim() || this.defaultPrimaryIdAttribute();
         const hasPrimaryId = new RegExp(`<attribute\\s+name=["']${primaryId}["']`, "i").test(fetchXml);
         if (hasPrimaryId) return fetchXml;
 
@@ -1223,7 +1225,7 @@ export class LtrService {
             diag.info("Fetching LTR data", { entity: this._targetEntity, isArchive });
             const entityMetadata = await this.getEntityMetadata(this._targetEntity);
             const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
-            const primaryIdAttribute = entityMetadata?.PrimaryIdAttribute || `${this._targetEntity}id`;
+            const primaryIdAttribute = entityMetadata?.PrimaryIdAttribute || this.defaultPrimaryIdAttribute();
 
             let workingAttributes = readableAttributeNames.slice();
             if (primaryIdAttribute && !workingAttributes.includes(primaryIdAttribute)) {
@@ -1550,51 +1552,32 @@ export class LtrService {
     /**
      * Fetch a single record's details
      */
-        public async getRecordDetails(id: string, isArchive: boolean = false, idAttribute?: string): Promise<any> {
+    public async getRecordDetails(id: string, isArchive: boolean = false, idAttribute?: string): Promise<any> {
         try {
             if (isArchive) {
-                                const effectiveIdAttribute = idAttribute || this.defaultPrimaryIdAttribute();
-                // To fetch a single retained record, we must use FetchXML with datasource="retained"
-                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained">
-                  <entity name="${this._targetEntity}">
-                    <all-attributes />
-                    <filter type="and">
-                                            <condition attribute="${effectiveIdAttribute}" operator="eq" value="${id}" />
-                    </filter>
-                  </entity>
+                const effectiveIdAttribute = idAttribute || this.defaultPrimaryIdAttribute();
+                const normalizedId = String(id || '').replace(/[{}]/g, '').toLowerCase();
+                const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
+                const projection = readableAttributeNames.length > 0
+                    ? readableAttributeNames.map(a => `<attribute name="${a}" />`).join("")
+                    : `<all-attributes />`;
+
+                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained" top="1">
+                    <entity name="${this._targetEntity}">
+                        ${projection}
+                        <filter type="and">
+                            <condition attribute="${effectiveIdAttribute}" operator="eq" value="${normalizedId}" />
+                        </filter>
+                    </entity>
                 </fetch>`;
 
-                // Reuse the LTR fetch logic which handles the attribute injection/verification
-                // (Note: we already added it in the string above, but getLtrData adds it again if isArchive=true 
-                //  so strictly speaking we should pass raw xml or adjust getLtrData logic. 
-                //  For safety, we'll just call retrieveMultipleRecords directly here to be explicit).
-
-                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
-                const record = result.entities.length > 0 ? result.entities[0] : null;
+                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`, 1);
+                const hydrated = this.hydrateRowsWithAllAttributeKeys(result.entities || [], readableAttributeNames);
+                const record = hydrated.length > 0 ? hydrated[0] : null;
                 diag.info("Fetched retained record", { entity: this._targetEntity, id, idAttribute: effectiveIdAttribute, found: !!record });
-                                const normalizedId = String(id || '').replace(/[{}]/g, '').toLowerCase();
-                                const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
-                                const projection = readableAttributeNames.length > 0
-                                        ? readableAttributeNames.map(a => `<attribute name="${a}" />`).join("")
-                                        : `<all-attributes />`;
-
-                                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained" top="1">
-                                    <entity name="${this._targetEntity}">
-                                        ${projection}
-                                        <filter type="and">
-                                            <condition attribute="${this._targetEntity}id" operator="eq" value="${normalizedId}" />
-                                        </filter>
-                                    </entity>
-                                </fetch>`;
-
-                                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`, 1);
-                                const hydrated = this.hydrateRowsWithAllAttributeKeys(result.entities || [], readableAttributeNames);
-                                const record = hydrated.length > 0 ? hydrated[0] : null;
-                diag.info("Fetched retained record", { entity: this._targetEntity, id, found: !!record });
                 return record;
             }
 
-            // Standard retrieve for active data
             const result = await this._context.webAPI.retrieveRecord(this._targetEntity, id);
             diag.info("Fetched active record", { entity: this._targetEntity, id, found: !!result });
             return result;

@@ -40,22 +40,11 @@ export const DynamicGrid: React.FC<IDynamicGridProps> = (props) => {
     const [filterDraft, setFilterDraft] = React.useState<string>('');
     const [filterAnchor, setFilterAnchor] = React.useState<HTMLElement>();
 
-    const findRecordId = (item: any): string | null => {
-        if (!item || typeof item !== 'object') return null;
-
-        const keys = Object.keys(item);
-        const direct = keys.find(k => /id$/i.test(k) && typeof item[k] === 'string' && /^[0-9a-fA-F-]{36}$/.test(item[k]));
-        if (direct) return item[direct];
-
-        return null;
-    };
-
     const _selection = new Selection({
         onSelectionChanged: () => {
             const selected = _selection.getSelection();
             if (selected.length > 0) {
                 const item = selected[0] as any;
-                const possibleId = findRecordId(item);
                 const possibleId = resolveRecordId(item);
                 if (possibleId) {
                     diag.info("Grid row selected", { possibleId });
