@@ -505,6 +505,14 @@ export class LtrService {
         return updated || fetchXml;
     }
 
+    private defaultPrimaryIdAttribute(): string {
+        const activityEntities = new Set([
+            "email", "task", "appointment", "phonecall", "letter", "fax", "campaignresponse", "serviceappointment"
+        ]);
+        if (activityEntities.has((this._targetEntity || "").toLowerCase())) {
+            return "activityid";
+        }
+        return `${this._targetEntity}id`;
     private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number, attributeNames: string[]): string {
         const id = parentId.replace(/[{}]/g, "");
         const projection = attributeNames.length > 0
@@ -1542,9 +1550,28 @@ export class LtrService {
     /**
      * Fetch a single record's details
      */
-    public async getRecordDetails(id: string, isArchive: boolean = false): Promise<any> {
+        public async getRecordDetails(id: string, isArchive: boolean = false, idAttribute?: string): Promise<any> {
         try {
             if (isArchive) {
+                                const effectiveIdAttribute = idAttribute || this.defaultPrimaryIdAttribute();
+                // To fetch a single retained record, we must use FetchXML with datasource="retained"
+                const fetchXml = `<fetch version="1.0" output-format="xml-platform" mapping="logical" distinct="false" datasource="retained">
+                  <entity name="${this._targetEntity}">
+                    <all-attributes />
+                    <filter type="and">
+                                            <condition attribute="${effectiveIdAttribute}" operator="eq" value="${id}" />
+                    </filter>
+                  </entity>
+                </fetch>`;
+
+                // Reuse the LTR fetch logic which handles the attribute injection/verification
+                // (Note: we already added it in the string above, but getLtrData adds it again if isArchive=true 
+                //  so strictly speaking we should pass raw xml or adjust getLtrData logic. 
+                //  For safety, we'll just call retrieveMultipleRecords directly here to be explicit).
+
+                const result = await this._context.webAPI.retrieveMultipleRecords(this._targetEntity, `?fetchXml=${encodeURIComponent(fetchXml)}`);
+                const record = result.entities.length > 0 ? result.entities[0] : null;
+                diag.info("Fetched retained record", { entity: this._targetEntity, id, idAttribute: effectiveIdAttribute, found: !!record });
                                 const normalizedId = String(id || '').replace(/[{}]/g, '').toLowerCase();
                                 const readableAttributeNames = await this.getReadableAttributeNames(this._targetEntity);
                                 const projection = readableAttributeNames.length > 0
