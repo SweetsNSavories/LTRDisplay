@@ -134,7 +134,7 @@ export class LtrService {
             const resolved: IEntityMetadata = {
                 LogicalName: String(metadata?.LogicalName || entity).toLowerCase(),
                 DisplayName: String(displayName),
-                PrimaryIdAttribute: String(metadata?.PrimaryIdAttribute || `${entity}id`).toLowerCase(),
+                PrimaryIdAttribute: String(metadata?.PrimaryIdAttribute || LtrService.defaultPrimaryIdAttributeForEntity(entity)).toLowerCase(),
                 PrimaryNameAttribute: String(metadata?.PrimaryNameAttribute || '').toLowerCase()
             };
 
@@ -513,6 +513,17 @@ export class LtrService {
             return "activityid";
         }
         return `${this._targetEntity}id`;
+    }
+
+    private static defaultPrimaryIdAttributeForEntity(entityLogicalName: string): string {
+        const logical = String(entityLogicalName || '').toLowerCase();
+        const activityEntities = new Set([
+            "email", "task", "appointment", "phonecall", "letter", "fax", "campaignresponse", "serviceappointment"
+        ]);
+        if (activityEntities.has(logical)) {
+            return "activityid";
+        }
+        return `${logical}id`;
     }
 
     private buildRelatedFetch(relationship: IRelatedRelationship, parentId: string, maxRows: number, attributeNames: string[]): string {
@@ -1152,6 +1163,164 @@ export class LtrService {
         }
     }
 
+    private sanitizeFetchAgainstEntityMetadata(fetchXml: string, validAttributes: string[]): string {
+        if (!fetchXml) {
+            return fetchXml;
+        }
+
+        const targetEntity = (this._targetEntity || '').toLowerCase();
+        const validAttributeSet = new Set((validAttributes || []).map((a) => String(a).toLowerCase()));
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(fetchXml, 'text/xml');
+            const parseError = doc.getElementsByTagName('parsererror');
+            if (parseError && parseError.length > 0) {
+                throw new Error('Invalid FetchXML parser result');
+            }
+
+            const entity = doc.getElementsByTagName('entity')[0];
+            if (!entity) {
+                return fetchXml;
+            }
+
+            // Force the root entity to the currently selected entity.
+            entity.setAttribute('name', targetEntity);
+
+            let removedAttributes = 0;
+            let removedConditions = 0;
+            let removedOrders = 0;
+
+            const attributes = Array.from(entity.getElementsByTagName('attribute'));
+            for (const attributeNode of attributes) {
+                const parentNode = attributeNode.parentNode;
+                const raw = String(attributeNode.getAttribute('name') || '');
+                const logical = raw.trim().toLowerCase();
+                if (logical) {
+                    attributeNode.setAttribute('name', logical);
+                }
+
+                if (!parentNode) {
+                    continue;
+                }
+
+                if (!logical) {
+                    parentNode.removeChild(attributeNode);
+                    removedAttributes++;
+                    continue;
+                }
+
+                if (validAttributeSet.size > 0 && !validAttributeSet.has(logical)) {
+                    parentNode.removeChild(attributeNode);
+                    removedAttributes++;
+                }
+            }
+
+            const conditions = Array.from(entity.getElementsByTagName('condition'));
+            for (const conditionNode of conditions) {
+                const parentNode = conditionNode.parentNode;
+                if (!parentNode) {
+                    continue;
+                }
+
+                const entityNameRaw = String(conditionNode.getAttribute('entityname') || '').trim().toLowerCase();
+                const rawAttribute = String(conditionNode.getAttribute('attribute') || '');
+                const logical = rawAttribute.trim().toLowerCase();
+
+                if (logical) {
+                    conditionNode.setAttribute('attribute', logical);
+                }
+
+                const crossEntity = !!entityNameRaw && entityNameRaw !== targetEntity;
+                const aliased = logical.includes('.');
+                const invalid = !!logical && validAttributeSet.size > 0 && !validAttributeSet.has(logical);
+
+                if (crossEntity || aliased || invalid || !logical) {
+                    parentNode.removeChild(conditionNode);
+                    removedConditions++;
+                }
+            }
+
+            const orders = Array.from(entity.getElementsByTagName('order'));
+            for (const orderNode of orders) {
+                const parentNode = orderNode.parentNode;
+                if (!parentNode) {
+                    continue;
+                }
+
+                const entityNameRaw = String(orderNode.getAttribute('entityname') || '').trim().toLowerCase();
+                const rawAttribute = String(orderNode.getAttribute('attribute') || '');
+                const logical = rawAttribute.trim().toLowerCase();
+
+                if (logical) {
+                    orderNode.setAttribute('attribute', logical);
+                }
+
+                const crossEntity = !!entityNameRaw && entityNameRaw !== targetEntity;
+                const aliased = logical.includes('.');
+                const invalid = !!logical && validAttributeSet.size > 0 && !validAttributeSet.has(logical);
+
+                if (crossEntity || aliased || invalid || !logical) {
+                    parentNode.removeChild(orderNode);
+                    removedOrders++;
+                }
+            }
+
+            const linkEntities = Array.from(entity.getElementsByTagName('link-entity'));
+            for (let i = linkEntities.length - 1; i >= 0; i--) {
+                const node = linkEntities[i];
+                if (node.parentNode) {
+                    node.parentNode.removeChild(node);
+                }
+            }
+
+            const filters = Array.from(entity.getElementsByTagName('filter'));
+            for (let i = filters.length - 1; i >= 0; i--) {
+                const filter = filters[i];
+                const hasElementChildren = Array.from(filter.childNodes).some((n: any) => n.nodeType === 1);
+                if (!hasElementChildren && filter.parentNode) {
+                    filter.parentNode.removeChild(filter);
+                }
+            }
+
+            const serializer = new XMLSerializer();
+            const sanitizedXml = serializer.serializeToString(doc);
+            diag.info('Sanitized FetchXML against entity metadata', {
+                entity: targetEntity,
+                removedAttributes,
+                removedConditions,
+                removedOrders,
+                validAttributeCount: validAttributeSet.size
+            });
+            return sanitizedXml;
+        } catch {
+            return fetchXml;
+        }
+    }
+
+    private extractRootEntityFromFetchXml(fetchXml?: string): string | undefined {
+        const xml = String(fetchXml || '').trim();
+        if (!xml) {
+            return undefined;
+        }
+
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(xml, 'text/xml');
+            if (doc.getElementsByTagName('parsererror').length > 0) {
+                throw new Error('Invalid FetchXML parser result');
+            }
+
+            const entity = doc.getElementsByTagName('entity')[0];
+            const name = String(entity?.getAttribute('name') || '').trim().toLowerCase();
+            return name || undefined;
+        } catch {
+            const match = /<entity\b[^>]*\bname=["']([^"']+)["']/i.exec(xml);
+            const name = String(match?.[1] || '').trim().toLowerCase();
+            return name || undefined;
+        }
+    }
+
     /**
      * Fetches the system views for the target entity
      */
@@ -1159,20 +1328,45 @@ export class LtrService {
         try {
             diag.info("Fetching system views", { entity: this._targetEntity });
             const query = `?` +
-                `$select=name,fetchxml,layoutxml,savedqueryid` +
-                `&$filter=returnedtypecode eq '${this._targetEntity}' and statecode eq 0` +
+                `$select=name,fetchxml,layoutxml,savedqueryid,returnedtypecode,statecode` +
+                `&$filter=statecode eq 0` +
                 `&$orderby=name asc`; // active views
 
             // Using standard WebAPI
             const result = await this._context.webAPI.retrieveMultipleRecords("savedquery", query);
 
-            const views = result.entities.map(e => ({
-                id: e.savedqueryid,
-                name: e.name,
-                fetchXml: e.fetchxml,
-                layoutXml: e.layoutxml
-            }));
-            diag.info("Fetched system views", { count: views.length });
+            const target = String(this._targetEntity || '').toLowerCase();
+            const seen = new Set<string>();
+            const views = (result.entities || [])
+                .filter((e: any) => {
+                    const id = String(e?.savedqueryid || '').toLowerCase();
+                    if (!id || seen.has(id)) {
+                        return false;
+                    }
+
+                    const fetchXml = String(e?.fetchxml || '');
+                    const rootEntity = this.extractRootEntityFromFetchXml(fetchXml);
+                    const returnedTypeCode = String(e?.returnedtypecode || '').trim().toLowerCase();
+
+                    // Keep only views that are provably for the selected entity.
+                    const match = rootEntity === target || returnedTypeCode === target;
+                    if (match) {
+                        seen.add(id);
+                    }
+                    return match;
+                })
+                .map((e: any) => ({
+                    id: e.savedqueryid,
+                    name: e.name,
+                    fetchXml: e.fetchxml,
+                    layoutXml: e.layoutxml
+                }));
+
+            diag.info("Fetched system views", {
+                requestedEntity: this._targetEntity,
+                totalRetrieved: result.entities?.length || 0,
+                filteredCount: views.length
+            });
             return views;
         } catch (error) {
             diag.error("Error fetching views", error, { entity: this._targetEntity });
@@ -1239,11 +1433,13 @@ export class LtrService {
             let diagnosticsSnapshot: any = undefined;
 
             for (let attempt = 1; attempt <= MAX_LTR_FETCH_ATTEMPTS; attempt++) {
-                const expanded = this.expandFetchToExplicitColumns(workingFetchXml, workingAttributes);
+                const sanitizedInputFetch = this.sanitizeFetchAgainstEntityMetadata(workingFetchXml, workingAttributes);
+                const expanded = this.expandFetchToExplicitColumns(sanitizedInputFetch, workingAttributes);
                 const withPrimaryId = this.ensurePrimaryIdAttribute(expanded, primaryIdAttribute);
+                const sanitizedForExecution = this.sanitizeFetchForRetainedStore(withPrimaryId, workingAttributes);
                 const effectiveFetch = isArchive
-                    ? this.ensureRetainedFetch(this.sanitizeFetchForRetainedStore(withPrimaryId, workingAttributes))
-                    : withPrimaryId;
+                    ? this.ensureRetainedFetch(sanitizedForExecution)
+                    : sanitizedForExecution;
 
                 diagnosticsSnapshot = {
                     entity: this._targetEntity,
@@ -1254,8 +1450,10 @@ export class LtrService {
                     workingAttributeCount: workingAttributes.length,
                     primaryIdAttribute,
                     originalFetchXml: workingFetchXml,
+                    sanitizedInputFetchXml: sanitizedInputFetch,
                     expandedFetchXml: expanded,
                     fetchWithPrimaryId: withPrimaryId,
+                    sanitizedFetchXml: sanitizedForExecution,
                     effectiveFetchXml: effectiveFetch
                 };
 
