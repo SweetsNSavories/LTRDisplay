@@ -453,6 +453,29 @@ function applyViewFetchFilterLocally(rows: any[], fetchXml: string): any[] {
     }
 }
 
+function extractRootEntityFromFetchXml(fetchXml?: string): string | undefined {
+    const xml = String(fetchXml || '').trim();
+    if (!xml) {
+        return undefined;
+    }
+
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xml, 'text/xml');
+        if (doc.getElementsByTagName('parsererror').length > 0) {
+            throw new Error('Invalid FetchXML parser result');
+        }
+
+        const entity = doc.getElementsByTagName('entity')[0];
+        const name = String(entity?.getAttribute('name') || '').trim().toLowerCase();
+        return name || undefined;
+    } catch {
+        const match = /<entity\b[^>]*\bname=["']([^"']+)["']/i.exec(xml);
+        const name = String(match?.[1] || '').trim().toLowerCase();
+        return name || undefined;
+    }
+}
+
 const App: React.FC<IAppProps> = (props) => {
     const { context, targetEntity } = props;
 
@@ -584,6 +607,19 @@ const App: React.FC<IAppProps> = (props) => {
             const view = currentViews.find(v => v.id === viewId);
             if (!view) return;
 
+            const expectedEntity = String(selectedEntity || '').toLowerCase();
+            const viewEntity = extractRootEntityFromFetchXml(view.fetchXml);
+            if (viewEntity && expectedEntity && viewEntity !== expectedEntity) {
+                diag.error("Rejected mismatched view for selected entity", null, {
+                    selectedEntity: expectedEntity,
+                    viewId,
+                    viewEntity,
+                    viewName: view.name
+                });
+                setGridData([]);
+                return;
+            }
+
             if (selectedViewId !== viewId) {
                 const columns = XmlParserHelper.parseLayoutXml(view.layoutXml);
                 setSelectedViewId(viewId);
@@ -648,12 +684,18 @@ const App: React.FC<IAppProps> = (props) => {
             return;
         }
 
+        let disposed = false;
+
         const loadMetadata = async () => {
             setLoading(true);
             try {
                 const service = new LtrService(context, selectedEntity);
                 const vs = await service.getSystemViews();
                 const fs = await loadFormsForEntity(selectedEntity);
+
+                if (disposed) {
+                    return;
+                }
 
                 setViews(vs);
                 setDetailsForms(fs);
@@ -678,11 +720,17 @@ const App: React.FC<IAppProps> = (props) => {
             } catch (err) {
                 diag.error("Metadata load failed", err, { entity: selectedEntity });
             } finally {
-                setLoading(false);
+                if (!disposed) {
+                    setLoading(false);
+                }
             }
         };
 
         loadMetadata();
+
+        return () => {
+            disposed = true;
+        };
     }, [selectedEntity, archiveMode, loadFormsForEntity, prepareView]);
 
     const handleRecordSelect = async (recordRef: any) => {
