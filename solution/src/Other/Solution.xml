@@ -88,7 +88,12 @@
         </Address>
       </Addresses>
     </Publisher>
-    <RootComponents />
+    <RootComponents>
+      <!-- PCF Custom Control component (type 66) -->
+      <RootComponent type="66" schemaName="LTRDisplay.LTRDisplayControl" behavior="0" />
+      <!-- systemuser "LTR Display" main form (type 60) -->
+      <RootComponent type="60" id="{9b332a14-d6ce-4f3b-b5b4-a5f1c7b32abc}" behavior="0" />
+    </RootComponents>
     <MissingDependencies />
   </SolutionManifest>
 </ImportExportXml>
